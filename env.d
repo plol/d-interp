@@ -7,7 +7,10 @@ final class Env {
     Val[string] vars;
 
     this() {
-        declare("$add_int", Val(true));
+        declare("$add_int", Val( (Val[] vars) {
+                    assert (vars.length == 2);
+                    return Val(vars[0].int_val + vars[1].int_val);
+                    }));
         declare("$add_float", Val(true));
         declare("$add_double", Val(true));
         declare("$add_real", Val(true));
@@ -27,7 +30,6 @@ final class Env {
     }
 
     Val lookup(string var_name) {
-        writeln("looking up variable ", var_name);
         if (var_name in vars) {
             return vars[var_name];
         }

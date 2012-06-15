@@ -1,4 +1,5 @@
 import std.stdio;
+import std.range, std.algorithm, std.array;
 
 import env, val, ir;
 
@@ -9,6 +10,7 @@ Val interpret(IR ir, Env env) {
         IR.Type.variable: &interpret_variable,
         IR.Type.constant: &interpret_constant,
         IR.Type.sequence: &interpret_sequence,
+        IR.Type.application: &interpret_application,
     ];
     assert (ir.type in table, "wtf bro O_o");
     return table[ir.type](ir, env);
@@ -35,6 +37,8 @@ Val interpret_constant(IR ir, Env env) {
 }
 
 Val interpret_variable(IR ir, Env env) {
+    writeln("looking up variable ", ir.var_name);
+    writeln(env.lookup(ir.var_name));
     return env.lookup(ir.var_name);
 }
 
@@ -54,5 +58,18 @@ Val interpret_assignment(IR ir, Env env) {
         assert (0);
     }
     return result;
+}
+
+Val interpret_application(IR ir, Env env) {
+    Val interpret_in_env(IR o) {
+        return interpret(o, env);
+    }
+    Val operator = interpret(ir.application.operator, env);
+    Val[] operands = array(map!interpret_in_env(ir.application.operands));
+
+    writeln("applying ", operator, " to ", operands);
+    auto res = operator.apply(operands);
+    writeln("result was ", res);
+    return res;
 }
 

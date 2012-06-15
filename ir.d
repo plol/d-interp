@@ -17,22 +17,29 @@ final class IR {
 
         constant,
 
+        application,
+
         nothing,
 
         LAST // DUNNO IF I NEED
     }
-    static struct IF {
+    static struct If {
         IR if_part, then_part, else_part;
     }
-    static struct BIN {
+    static struct Bin {
         IR lhs, rhs;
+    }
+    static struct Application {
+        IR operator;
+        IR[] operands;
     }
 
     Type type;
 
     union {
-        IF if_;
-        BIN bin;
+        If if_;
+        Bin bin;
+        Application application;
         Val val;
         string var_name;
         IR[] sequence;
@@ -69,7 +76,7 @@ final class IR {
     this(Type t, IR ir1, IR ir2, IR ir3) {
         type = t;
         if (t == Type.if_) {
-            if_ = IF(ir1, ir2, ir3);
+            if_ = If(ir1, ir2, ir3);
         } else {
             assert (0);
         }
@@ -86,6 +93,14 @@ final class IR {
         type = t;
         if (t == Type.sequence) {
             sequence = seq;
+        } else {
+            assert (0);
+        }
+    }
+    this(Type t, IR a, IR[] b) {
+        type = t;
+        if (t == Type.application) {
+            application = Application(a, b);
         } else {
             assert (0);
         }
