@@ -1,4 +1,33 @@
-import std.conv;
+import std.conv, std.typetuple;
+
+
+alias TypeTuple!(
+        bool,
+
+        char,
+        wchar,
+        dchar,
+
+        byte,
+        ubyte,
+
+        short,
+        ushort,
+
+        int,
+        uint,
+
+        long,
+        ulong,
+
+        //cent,
+        //ucent,
+
+        float,
+        double,
+        real,
+        ) primitive_types;
+
 
 struct TI {
 

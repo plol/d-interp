@@ -3,11 +3,26 @@ import std.conv;
 
 import typeinfo;
 
+string make_primitive_tis(Ts...)() {
+    string s;
+    foreach (T; Ts) {
+        s ~= "
+        TI make_new_ti(T)() if (is(T == " ~ T.stringof ~ ")) {
+            TI ti;
+            ti.primitive = typeid(" ~ T.stringof ~ ");
+            ti.type = TI.Type." ~ T.stringof ~ "_;
+            return ti;
+        }
+        ";
+    }
+    return s;
+}
+
 final class CTEnv {
 
     CTEnv parent;
 
-    // AA of function name -> overload set
+    // AA of function name -> overload set  (????)
     int[][string] functions;
 
     TI[string] tis;
@@ -46,19 +61,8 @@ final class CTEnv {
         }
         return ti;
     }
-    private TI make_new_ti(T)() if (is(T == int)) {
-        TI ti;
-        ti.primitive = typeid(int);
-        ti.type = TI.Type.int_;
-        return ti;
-    }
-    private TI make_new_ti(T)() if (is(T == bool)) {
-        TI ti;
-        ti.primitive = typeid(bool);
-        ti.type = TI.Type.bool_;
-        return ti;
-    }
 
+    mixin (make_primitive_tis!primitive_types());
 
     void declare(TI ti, string var_name) {
         enforce(var_name !in vars);

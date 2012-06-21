@@ -26,6 +26,13 @@ int add_int(int a, int b) {
 int lt_int(int a, int b) {
     return a < b;
 }
+bool cast_int_bool(int a) {
+    return cast(bool)a;
+}
+bool not(bool b) {
+    return !b;
+}
+
 
 template unpackVar(T) {
     static if (is(T == int)) {
@@ -67,34 +74,56 @@ void main() {
 
     auto _add_int = &add_int;
     auto _lt_int = &lt_int;
+    auto _cast_int_bool = &cast_int_bool;
+    auto _not = &not;
 
     ct_env.declare(ct_env.get_ti!int(), "a");
     ct_env.declare(ct_env.get_ti!int(), "b");
     ct_env.declare(ct_env.get_ti!(typeof(_add_int))(), "$add_int");
     ct_env.declare(ct_env.get_ti!(typeof(_lt_int))(), "$lt_int");
+    ct_env.declare(ct_env.get_ti!(typeof(_cast_int_bool))(), "$cast_int_bool");
+    ct_env.declare(ct_env.get_ti!(typeof(_not))(), "$not");
 
-    auto ir = new IR(IR.Type.sequence, [
+//    auto ir = new IR(IR.Type.sequence, [
+//                    new IR(IR.Type.while_, 
+//                        new IR(IR.Type.application,
+//                            new IR(IR.Type.variable, "$lt_int", ct_env),
+//                            [ new IR(IR.Type.variable, "a", ct_env),
+//                              new IR(IR.Type.constant, 
+//                                      ct_env.get_ti!int(), Val(10)) ]),
+//                        new IR(IR.Type.assignment,
+//                            new IR(IR.Type.variable, "a", ct_env),
+//                            new IR(IR.Type.application,
+//                                new IR(IR.Type.variable, "$add_int", ct_env),
+//                                [ new IR(IR.Type.variable, "a", ct_env),
+//                                  new IR(IR.Type.constant,
+//                                          ct_env.get_ti!int(), Val(1)) ]))),
+//                    ]);
+    auto ir2 = new IR(IR.Type.sequence, [
                     new IR(IR.Type.while_, 
                         new IR(IR.Type.application,
-                            new IR(IR.Type.variable, "$lt_int", ct_env),
-                            [ new IR(IR.Type.variable, "a", ct_env),
-                              new IR(IR.Type.constant, ct_env.get_ti!int(), Val(10)) ]),
+                            new IR(IR.Type.variable, 
+                                "$cast_int_bool", ct_env),
+                            [ new IR(IR.Type.variable, "a", ct_env) ]),
                         new IR(IR.Type.assignment,
                             new IR(IR.Type.variable, "a", ct_env),
                             new IR(IR.Type.application,
                                 new IR(IR.Type.variable, "$add_int", ct_env),
                                 [ new IR(IR.Type.variable, "a", ct_env),
-                                  new IR(IR.Type.constant, ct_env.get_ti!int(), Val(1)) ]))),
+                                  new IR(IR.Type.constant, 
+                                      ct_env.get_ti!int(), Val(-1)) ]))),
                     ]);
 
-    ir.resolve(ct_env);
+    ir2.resolve(ct_env);
 
     auto env = new Env();
-    env.declare("a", Val(1));
+    env.declare("a", Val(10));
     env.declare("b", Val(2));
     env.declare("$lt_int", Val(&wrap!(lt_int)));
     env.declare("$add_int", Val(&wrap!(add_int)));
+    env.declare("$cast_int_bool", Val(&wrap!(cast_int_bool)));
+    env.declare("$not", Val(&wrap!(not)));
 
-    writeln(interpret(ir, env).toString(ct_env.get_ti!int()));
+    writeln(interpret(ir2, env).toString(ct_env.get_ti!int()));
     writeln(interpret(new IR(IR.Type.variable, "a", ct_env), env).toString(ct_env.get_ti!int()));
 }
