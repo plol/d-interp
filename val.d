@@ -3,118 +3,63 @@ import std.algorithm;
 import std.array;
 import std.conv;
 
+import typeinfo;
+
 struct Val {
-    enum Type {
-        void_,
-
-        bool_,
-
-        char_,
-        wchar_,
-        dchar_,
-
-        byte_,
-        ubyte_,
-
-        short_,
-        ushort_,
-
-        int_,
-        uint_,
-
-        long_,
-        ulong_,
-
-        cent_,
-        ucent_,
-
-        float_,
-        double_,
-        real_,
-
-        class_,
-        interface_,
-        struct_,
-        enum_,
-        union_,
-
-        pointer,
-        array,
-        assocarray,
-
-        delegate_,
-        function_,
-
-        builtin_function,
-        builtin_delegate,
-    }
-
-    static Val void_ = Val(Type.void_);
-
-    Type type;
-
-    union {
+    union PossibleValues {
         bool bool_val = void;
-        int int_val = void;
         char char_val = void;
-        Val* pointer = void;
-        Val[] array = void;
-        Val[Val] assocarray = void;
+        wchar wchar_val = void;
+        dchar dchar_val = void;
+
+        byte byte_val = void;
+        ubyte ubyte_val = void;
+
+        short short_val = void;
+        ushort ushort_val = void;
+
+        int int_val = void;
+        uint uint_val = void;
+
+        long long_val = void;
+        ulong ulong_val = void;
+
+        //cent cent_val = void;
+        //ucent ucent_val = void;
+
+        float float_val = void;
+        double double_val = void;
+        real real_val = void;
+
+        void* pointer = void;
+        void[] array = void;
+        void* assocarray = void;
         Val delegate(Val[]) builtin_delegate;
+        Val function(Val[]) builtin_function;
     }
 
-    this(string s) {
-        type = Type.array;
-        array = std.array.array(map!Val(s));
-    }
+    static enum Val void_ = Val();
 
-    this(Val delegate(Val[]) operator) {
-        type = Type.builtin_delegate;
-        builtin_delegate = operator;
-    }
+    PossibleValues tagged_union;
+    alias tagged_union this;
 
-    this(char c) {
-        type = Type.char_;
-        char_val = c;
-    }
-
-    this(int b) {
-        type = Type.int_;
-        int_val = b;
-    }
-    this(bool b) {
-        type = Type.bool_;
-        bool_val = b;
-    }
-
-    bool bool_value() @property const {
-        assert (type == Type.bool_);
-        return bool_val;
-    }
-
-    Val apply(Val[] operands) {
-        if (type == Type.builtin_delegate) {
-            return builtin_delegate(operands);
-        } else {
-            assert (0);
-        }
-    }
-
-
-
-
-
-
-
+    this(Val delegate(Val[]) operator) { builtin_delegate = operator; }
+    this(Val function(Val[]) operator) { builtin_function = operator; }
+    this(char c) { char_val = c; }
+    this(bool b) { bool_val = b; }
+    this(int b) { int_val = b; }
 
     string toString() const {
+        return "Val()";
+    }
+    string toString(TI ti) {
+        auto type = ti.type;
         switch (type) {
             default: return text("Val(", type, ")");
-            case Type.bool_: return to!string(bool_val);
-            case Type.int_: return to!string(int_val);
-            case Type.char_: return "'"~to!string(char_val)~"'";
-            case Type.array: return to!string(array);
-            case Type.assocarray: return to!string(assocarray);
+            case TI.Type.void_: return "no value produced";
+            case TI.Type.bool_: return to!string(bool_val);
+            case TI.Type.int_: return to!string(int_val);
+            case TI.Type.char_: return "'"~to!string(char_val)~"'";
         }
     }
 }
