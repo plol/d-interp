@@ -27,6 +27,9 @@ final class IR {
         typeid_,
         typeof_,
 
+        addressof,
+        deref,
+
         nothing,
 
         LAST // DUNNO IF I NEED
@@ -60,75 +63,6 @@ final class IR {
         IR next;
     }
 
-
-    TI resolve(CTEnv env) {
-        switch (type) {
-            default:
-                assert (0, text(type));
-
-            case Type.constant:
-                return ti;
-
-            case Type.if_:
-
-                auto if_part_type = if_.if_part.resolve(env);
-                enforce(env.get_ti!bool() == if_part_type);
-                // TODO check for if part type being boolean D:
-
-                if_.then_part.resolve(env);
-                if_.else_part.resolve(env);
-                return TI.void_;
-
-            case Type.while_:
-
-                auto condition_type = while_.condition.resolve(env);
-                // TODO check for while cond type being boolean D:
-                while_.body_.resolve(env);
-                return TI.void_;
-
-            case Type.application:
-
-                // TODO:
-                // We need to find the overloaded function here, or something.
-                // otherwise we can't really type check.
-
-                // we assume a unary overload set here,
-                // so direct type checking :-)
-
-                TI resolve_in_env(IR ir) {
-                    return ir.resolve(env);
-                }
-
-                auto arg_types = application.operands
-                                            .map!resolve_in_env().array();
-
-                auto assumed_arg_types = application.operator.ti.func_data[1..$];
-
-                enforce(arg_types.length == assumed_arg_types.length);
-
-                foreach (i; 0 .. assumed_arg_types.length) {
-                    enforce (arg_types[i] == assumed_arg_types[i]);
-                }
-
-                return application.operator.ti.func_data[0];
-
-            case Type.variable:
-                return env.typeof_(var_name);
-            case Type.sequence:
-                foreach (ir; sequence) {
-                    ir.resolve(env);
-                }
-                return TI.void_;
-            case Type.assignment:
-                auto lhs = bin.lhs.resolve(env);
-                auto rhs = bin.rhs.resolve(env);
-
-                // check... O_o
-
-                return lhs;
-        }
-    }
-
     this(Type t) {
         type = t;
         if (t == Type.nothing) {
@@ -157,7 +91,13 @@ final class IR {
         type = t;
         if (t == Type.typeid_) {
             next = ir1;
-        } else {
+        } else if (t == Type.addressof) {
+            next = ir1;
+        } else if (t == Type.typeid_) {
+            next = ir1;
+        } else if (t == Type.deref) {
+            next = ir1;
+        } else{
             assert (0);
         }
     }
@@ -180,13 +120,12 @@ final class IR {
             assert (0);
         }
     }
-    this(Type t, string s, CTEnv env) {
+    this(Type t, string s) {
         type = t;
         if (t == Type.variable) {
-            ti = env.typeof_(s);
             var_name = s;
         } else {
-            assert (0);
+            assert (0, to!string(t));
         }
     }
     this(Type t, IR[] seq) {

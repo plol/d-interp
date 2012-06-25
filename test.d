@@ -1,6 +1,6 @@
 import std.stdio, std.traits, std.conv;
 
-import ir, env, interp, val, typeinfo, ctenv;
+import ir, env, interp, val, typeinfo, ctenv, typecheck;
 
 //        declare(int_int_bool_delegate, "$lt_int", Val((Val[] vars) {
 //                    return Val(vars[0].int_val < vars[1].int_val);
@@ -33,38 +33,25 @@ bool not(bool b) {
     return !b;
 }
 
-
-template unpackVar(T) {
-    static if (is(T == int)) {
-        enum unpackVar = "int_val";
-    } else static if (is(T == bool)) {
-        enum unpackVar = "bool_val";
-    } else {
-        static assert (0);
-    }
+extern (C) void* _aaGetX(void* aa, TypeInfo keyti,
+        size_t valuesize, void* pkey);
+extern (C) void* _aaGetRvalueX(void* aa, TypeInfo keyti,
+        size_t valuesize, void* pkey);
+void* aaGetX(void* aa, TypeInfo keyti, size_t valuesize, void* pkey) {
+    return _aaGetX(aa, keyti, valuesize, pkey);
+}
+void* aaGetRvalueX(void* aa, TypeInfo keyti, size_t valuesize, void* pkey) {
+    return _aaGetRvalueX(aa, keyti, valuesize, pkey);
 }
 
-
-
-string unpackVars(Ts...)(int x = 0) {
-    static if (Ts.length == 0) {
-        return "";
-    } else {
-        string first = text("vars[",x,"].",unpackVar!(Ts[0]));
-        if (Ts.length == 1) {
-            return first;
-        } else {
-            return first ~ ", " ~ unpackVars!(Ts[1 .. $])(x+1);
-        }
-    }
+void* cast_int_int_aa_p_void_p(int[int]* aa) {
+    return cast(void*)aa;
 }
 
-
-
-Val wrap(F...)(Val[] vars) {
-    assert (vars.length == ParameterTypeTuple!F.length);
-    return Val(mixin("F[0]("~unpackVars!(ParameterTypeTuple!F)()~")"));
+int* cast_void_p_int_p(void* p) {
+    return cast(int*)p;
 }
+
 
 
 
@@ -72,18 +59,25 @@ Val wrap(F...)(Val[] vars) {
 void main() {
     auto ct_env = new CTEnv();
 
-    auto _add_int = &add_int;
-    auto _lt_int = &lt_int;
-    auto _cast_int_bool = &cast_int_bool;
-    auto _not = &not;
+    int[int] bro;
+    bro[9] = 123;
 
-    ct_env.declare(ct_env.get_ti!int(), "a");
-    ct_env.declare(ct_env.get_ti!int(), "b");
-    ct_env.declare(ct_env.get_ti!(typeof(_add_int))(), "$add_int");
-    ct_env.declare(ct_env.get_ti!(typeof(_lt_int))(), "$lt_int");
-    ct_env.declare(ct_env.get_ti!(typeof(_cast_int_bool))(), "$cast_int_bool");
-    ct_env.declare(ct_env.get_ti!(typeof(_not))(), "$not");
+    ct_env.autodeclare("a", 10);
+    ct_env.autodeclare("b", 2);
+    ct_env.autodeclare("mykey", 0);
 
+    ct_env.aadeclare("myaa", bro);
+
+    ct_env.funcdeclare!add_int("$add_int");
+    ct_env.funcdeclare!lt_int("$lt_int");
+    ct_env.funcdeclare!cast_int_bool("$cast_int_bool");
+    ct_env.funcdeclare!cast_int_int_aa_p_void_p("$cast_int_int_aa_p_void_p");
+    ct_env.funcdeclare!not("$not");
+    ct_env.funcdeclare!aaGetX("$aaGetX");
+    ct_env.funcdeclare!cast_void_p_int_p("$cast_void_p_int_p");
+
+//    // while (a < 10)
+//    //     a = a + 1;
 //    auto ir = new IR(IR.Type.sequence, [
 //                    new IR(IR.Type.while_, 
 //                        new IR(IR.Type.application,
@@ -99,31 +93,59 @@ void main() {
 //                                  new IR(IR.Type.constant,
 //                                          ct_env.get_ti!int(), Val(1)) ]))),
 //                    ]);
-    auto ir2 = new IR(IR.Type.sequence, [
-                    new IR(IR.Type.while_, 
-                        new IR(IR.Type.application,
-                            new IR(IR.Type.variable, 
-                                "$cast_int_bool", ct_env),
-                            [ new IR(IR.Type.variable, "a", ct_env) ]),
-                        new IR(IR.Type.assignment,
-                            new IR(IR.Type.variable, "a", ct_env),
-                            new IR(IR.Type.application,
-                                new IR(IR.Type.variable, "$add_int", ct_env),
-                                [ new IR(IR.Type.variable, "a", ct_env),
-                                  new IR(IR.Type.constant, 
-                                      ct_env.get_ti!int(), Val(-1)) ]))),
-                    ]);
+//    // while (cast(bool)a)
+//    //     a = a - 1;
+//    auto ir = new IR(IR.Type.sequence, [
+//                    new IR(IR.Type.while_, 
+//                        new IR(IR.Type.application,
+//                            new IR(IR.Type.variable, 
+//                                "$cast_int_bool", ct_env),
+//                            [ new IR(IR.Type.variable, "a", ct_env) ]),
+//                        new IR(IR.Type.assignment,
+//                            new IR(IR.Type.variable, "a", ct_env),
+//                            new IR(IR.Type.application,
+//                                new IR(IR.Type.variable, "$add_int", ct_env),
+//                                [ new IR(IR.Type.variable, "a", ct_env),
+//                                  new IR(IR.Type.constant, 
+//                                      ct_env.get_ti!int(), Val(-1)) ]))),
+//                    ]);
 
-    ir2.resolve(ct_env);
+    // mykey = 2;
+    // myaa[mykey] = 5; // kinda, sorta
 
-    auto env = new Env();
-    env.declare("a", Val(10));
-    env.declare("b", Val(2));
-    env.declare("$lt_int", Val(&wrap!(lt_int)));
-    env.declare("$add_int", Val(&wrap!(add_int)));
-    env.declare("$cast_int_bool", Val(&wrap!(cast_int_bool)));
-    env.declare("$not", Val(&wrap!(not)));
+    // actually
+    // mykey = 2;
+    // *cast(int*)($aaGetX(cast(void*)myaa, typeid(mykey), 4u, &mykey)) = 5;
 
-    writeln(interpret(ir2, env).toString(ct_env.get_ti!int()));
-    writeln(interpret(new IR(IR.Type.variable, "a", ct_env), env).toString(ct_env.get_ti!int()));
+    auto lookup_ir = new IR(IR.Type.application,
+            new IR(IR.Type.variable, "$aaGetX"),
+            [ new IR(IR.Type.application,
+                new IR(IR.Type.variable, "$cast_int_int_aa_p_void_p"),
+                [ new IR(IR.Type.addressof, new IR(IR.Type.variable, "myaa")),
+                ]),
+              new IR(IR.Type.typeid_, new IR(IR.Type.variable, "mykey")),
+              new IR(IR.Type.constant, ct_env.get_ti!uint(), Val(4u)),
+              new IR(IR.Type.addressof, new IR(IR.Type.variable, "mykey")),
+            ]);
+
+    auto ir = new IR(IR.Type.sequence, [
+            new IR(IR.Type.assignment,
+                new IR(IR.Type.variable, "mykey"),
+                new IR(IR.Type.constant, ct_env.get_ti!int(), Val(2))),
+            new IR(IR.Type.assignment,
+                new IR(IR.Type.deref,
+                    new IR(IR.Type.application,
+                        new IR(IR.Type.variable, "$cast_void_p_int_p"),
+                        [ lookup_ir ])),
+                new IR(IR.Type.constant, ct_env.get_ti!int(), Val(5))),
+            ]);
+
+
+    resolve(ir, ct_env);
+
+    auto env = ct_env.get_runtime_env();
+
+    writeln(interpret(ir, env).toString(ct_env.get_ti!int()));
+    writeln(env.vars["myaa"].toString(ct_env.get_ti!(int[int])()));
+    writeln(bro);
 }

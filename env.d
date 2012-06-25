@@ -23,7 +23,7 @@ final class Env {
         }
     }
 
-    Val lookup(string var_name) {
+    ref Val lookup(string var_name) {
         if (var_name in vars) {
             return vars[var_name];
         }

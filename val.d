@@ -45,6 +45,8 @@ struct Val {
 
     this(Val delegate(Val[]) operator) { builtin_delegate = operator; }
     this(Val function(Val[]) operator) { builtin_function = operator; }
+    this(void* p) { pointer = p; }
+    this(Object p) { pointer = cast(void*)p; }
     this(char c) { char_val = c; }
     this(bool b) { bool_val = b; }
     this(int b) { int_val = b; }
@@ -60,6 +62,8 @@ struct Val {
             case TI.Type.bool_: return to!string(bool_val);
             case TI.Type.int_: return to!string(int_val);
             case TI.Type.char_: return "'"~to!string(char_val)~"'";
+            case TI.Type.assocarray:
+                                return to!string(*cast(int[int]*)&pointer);
         }
     }
 }

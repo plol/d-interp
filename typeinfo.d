@@ -2,6 +2,7 @@ import std.conv, std.typetuple;
 
 
 alias TypeTuple!(
+        void, 
         bool,
 
         char,
@@ -54,7 +55,8 @@ struct TI {
     }
 
     enum Type {
-        void_ = 0,
+        unresolved = 0,
+        void_ = 1,
 
         bool_ = 100,
 
@@ -97,12 +99,20 @@ struct TI {
         builtin_function,
         builtin_delegate,
     }
-    static TI void_ = TI();
+    static TI void_ = TI(Type.void_);
 
-    Type type = Type.void_;
+    Type type = Type.unresolved;
     TypeInfoUnion typeinfo;
     alias typeinfo this;
 
     // [return_type, parameters...]
-    TI[] func_data;
+    TI[] ext_data;
+    ref TI next() @property { return ext_data[0]; }
+    TI[] operands() @property { return ext_data[1 .. $]; }
+
+    bool opEquals(TI other) {
+        return type == other.type
+            //&& primitive == other.primitive
+            && ext_data == other.ext_data;
+    }
 }
