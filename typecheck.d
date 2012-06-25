@@ -122,6 +122,7 @@ TI resolve_assignment(IR ir, CTEnv env) {
     auto rhs = ir.bin.rhs.resolve(env);
 
     // check... O_o
+    enforce(lhs == rhs);
 
     return lhs;
 }
@@ -131,6 +132,7 @@ TI resolve_nothing(IR ir, CTEnv env) {
 
 TI resolve_deref(IR ir, CTEnv env) {
     auto next = ir.next.resolve(env);
+    enforce(next.type == TI.Type.pointer);
     ir.ti = next.next;
     return ir.ti;
 }

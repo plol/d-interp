@@ -105,9 +105,10 @@ struct TI {
     TypeInfoUnion typeinfo;
     alias typeinfo this;
 
-    // [return_type, parameters...]
     TI[] ext_data;
     ref TI next() @property { return ext_data[0]; }
+    ref TI first() @property { return ext_data[0]; }
+    ref TI second() @property { return ext_data[1]; }
     TI[] operands() @property { return ext_data[1 .. $]; }
 
     bool opEquals(TI other) {
