@@ -1,6 +1,7 @@
 import std.stdio, std.traits, std.conv;
 
-import ir, env, interp, val, typeinfo, ctenv, typecheck;
+import internal.ir, internal.env, internal.interp, internal.val;
+import internal.typeinfo, internal.ctenv, internal.typecheck;
 
 //        declare(int_int_bool_delegate, "$lt_int", Val((Val[] vars) {
 //                    return Val(vars[0].int_val < vars[1].int_val);
@@ -54,6 +55,36 @@ int* cast_void_p_int_p(void* p) {
 
 
 
+IR call_var(string f, IR[] args...) {
+    return new IR(IR.Type.application,
+            new IR(IR.Type.variable, f),
+            args.dup);
+}
+
+IR var(string n) {
+    return new IR(IR.Type.variable, n);
+}
+IR deref(IR ir) {
+    return new IR(IR.Type.deref, ir);
+}
+IR set(IR lhs, IR rhs) {
+    return new IR(IR.Type.assignment, lhs, rhs);
+}
+
+IR constant(T)(CTEnv ct_env, T t) {
+    return new IR(IR.Type.constant, ct_env.get_ti!T(), Val(t));
+}
+IR seq(IR[] ss...) {
+    return new IR(IR.Type.sequence, ss.dup);
+}
+
+IR addressof(IR ir) {
+    return new IR(IR.Type.addressof, ir);
+}
+
+IR typeid_(IR ir) {
+    return new IR(IR.Type.typeid_, ir);
+}
 
 
 void main() {
@@ -116,31 +147,20 @@ void main() {
     // actually
     // mykey = 2;
     // *cast(int*)($aaGetX(cast(void*)myaa, typeid(mykey), 4u, &mykey)) = 5;
+    // which is what will be generated hopefully
 
-    auto lookup_ir = new IR(IR.Type.application,
-            new IR(IR.Type.variable, "$aaGetX"),
-            [ new IR(IR.Type.application,
-                new IR(IR.Type.variable, "$cast_int_int_aa_p_void_p"),
-                [ new IR(IR.Type.addressof, new IR(IR.Type.variable, "myaa")),
-                ]),
-              new IR(IR.Type.typeid_, new IR(IR.Type.variable, "mykey")),
-              new IR(IR.Type.constant, ct_env.get_ti!uint(), Val(4u)),
-              new IR(IR.Type.addressof, new IR(IR.Type.variable, "mykey")),
-            ]);
+    auto lookup_ir = call_var("$aaGetX",
+            call_var("$cast_int_int_aa_p_void_p",
+                addressof(var("myaa"))),
+            typeid_(var("mykey")),
+            constant(ct_env, 4u),
+            addressof(var("mykey")));
 
-    auto ir = new IR(IR.Type.sequence, [
-            new IR(IR.Type.assignment,
-                new IR(IR.Type.variable, "mykey"),
-                new IR(IR.Type.constant, ct_env.get_ti!int(), Val(2))),
-            new IR(IR.Type.assignment,
-                new IR(IR.Type.deref,
-                    new IR(IR.Type.application,
-                        new IR(IR.Type.variable, "$cast_void_p_int_p"),
-                        [ lookup_ir ])),
-                new IR(IR.Type.constant, ct_env.get_ti!int(), Val(5))),
-            ]);
-
-
+    auto ir = seq(
+            set(var("mykey"), constant(ct_env, 2)),
+            set(deref(call_var("$cast_void_p_int_p", lookup_ir)),
+                constant(ct_env, 5)),
+            );
     resolve(ir, ct_env);
 
     auto env = ct_env.get_runtime_env();

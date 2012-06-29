@@ -1,6 +1,8 @@
+module internal.env;
+
 import std.stdio;
 
-import val, typeinfo;
+import internal.val, internal.typeinfo;
 
 final class Env {
 

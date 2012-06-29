@@ -1,9 +1,11 @@
+module internal.val;
+
 import std.stdio;
 import std.algorithm;
 import std.array;
 import std.conv;
 
-import typeinfo;
+import internal.typeinfo;
 
 struct Val {
     union PossibleValues {

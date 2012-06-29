@@ -1,3 +1,5 @@
+module internal.typeinfo;
+
 import std.conv, std.typetuple;
 
 

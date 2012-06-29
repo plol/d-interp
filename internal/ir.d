@@ -1,9 +1,11 @@
+module internal.ir;
+
 import std.stdio, std.exception, std.algorithm, std.array, std.conv;
 
-import val;
-import typeinfo;
-import env;
-import ctenv;
+import internal.val;
+import internal.typeinfo;
+import internal.env;
+import internal.ctenv;
 
 final class IR {
     enum Type {

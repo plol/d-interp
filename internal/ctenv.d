@@ -1,7 +1,9 @@
+module internal.ctenv;
+
 import std.stdio, std.algorithm, std.traits, std.typetuple, std.exception;
 import std.conv;
 
-import typeinfo, ir, val, env;
+import internal.typeinfo, internal.ir, internal.val, internal.env;
 
 
 final class CTEnv {

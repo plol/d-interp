@@ -1,5 +1,7 @@
+module internal.typecheck;
+
 import std.conv, std.exception, std.stdio, std.algorithm, std.range;
-import typeinfo, ctenv, ir;
+import internal.typeinfo, internal.ctenv, internal.ir;
 
 TI resolve(IR ir, CTEnv env) {
     immutable table = [

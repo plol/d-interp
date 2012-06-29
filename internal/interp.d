@@ -1,7 +1,9 @@
+module internal.interp;
+
 import std.stdio, std.conv;
 import std.range, std.algorithm, std.array;
 
-import env, val, ir, typeinfo;
+import internal.env, internal.val, internal.ir, internal.typeinfo;
 
 Val interpret(IR ir, Env env) {
     immutable table = [
