@@ -3,10 +3,11 @@ module lexer;
 import std.stdio, std.conv;
 import std.algorithm, std.range, std.array;
 
+import stuff;
+
 struct Token {
     int line;
     string str;
-    TOK tok;
 }
 
 enum whitespace = ["\u0020", "\u0009", "\u000B", "\u000C"];
@@ -46,57 +47,58 @@ enum keywords = ["abstract", "alias", "align", "asm", "assert", "auto", "body",
  *
  */
 
-struct Trie {
-    Trie[dchar] nexts;
-    string word;
+struct Trie(K,V) {
+    alias ElementType!K E;
+    private Trie[E] nexts;
+    private V* _word;
 
-    this(string[] strings) {
-        this(strings, strings.array());
+    ref V value() @property {
+        return *_word;
     }
 
-    private this(string[] begins, string[] finals) {
-        sort(zip(begins, finals));
+    this(K[] ks, V[] vs) {
 
-        auto completes = finals[0 .. begins.until!"a.length > 0"().walkLength];
+        zip(ks, vs).sort();
+
+        auto completes = vs[0 .. ks.until!"a.length > 0"().walkLength];
         assert (completes.length <= 1, text(completes));
         if (completes.length == 1) {
-            word = completes[0];
+            _word = &completes[0];
         }
 
-        begins = begins[completes.length .. $];
-        finals = finals[completes.length .. $];
+        ks = ks[completes.length .. $];
+        vs = vs[completes.length .. $];
 
-        while (!begins.empty) {
-            dchar f = begins[0].front;
-            bool starts_with_different_than_first(string a) {
+        while (!ks.empty) {
+            auto f = ks[0].front;
+
+            bool starts_with_diff(K a) { // bug
                 return a.front != f;
             }
 
-            auto sames = begins.until!starts_with_different_than_first();
-
-            size_t len = sames.walkLength;
+            size_t len = ks.until!starts_with_diff() .walkLength();
 
             foreach (i; 0 .. len) {
-                begins[i].popFront();
+                ks[i].popFront();
             }
 
-            nexts[f] = Trie(begins[0 .. len], finals[0 .. len]);
-            begins = begins[len .. $];
-            finals = finals[len .. $];
+            nexts[f] = Trie(ks[0 .. len], vs[0 .. len]);
+            ks = ks[len .. $];
+            vs = vs[len .. $];
         }
     }
 
     bool complete() const @property {
-        return word.length > 0;
+        return _word !is null;
     }
 
-    bool opIn_r(dchar d) {
+    bool opIn_r(E d) {
         return (d in nexts) != null;
     }
-    Trie opIndex(dchar d) {
+    Trie opIndex(E d) {
         return nexts[d];
     }
-    Trie opIndex(string s) {
+    Trie opIndex(K s) {
         if (s.empty) return this;
         auto f = s.front;
         s.popFront;
@@ -104,10 +106,10 @@ struct Trie {
     }
 
     string toString() {
-        return "Trie: " ~ toString2("\n");
+        return "Trie: " ~ toString2();
     }
 
-    private string toString2(string joiner = ", ") {
+    private string toString2() {
         bool needs_paren = (complete && nexts.length > 0) || nexts.length > 1;
         string s;
         
@@ -116,45 +118,85 @@ struct Trie {
         }
 
         if (complete) {
-            s ~= ":\"";
-            s ~= word;
-            s ~= '"';
+            s ~= ":";
+            s ~= to!string(value);
             if (nexts.length != 0) {
                 s ~= " ";
             }
         }
 
+
+        // Cannot inline this function as
+        // something cannot get frame pointer to map
+        string f(typeof(zip(nexts.keys, nexts.values).front) a) {
+            return text(a[0], a[1].toString2()); // BUG BUG BUG
+        }
+
         s ~= zip(nexts.keys, nexts.values)
-            .map!(a => text(a[0], "", a[1].toString2()))
-            .join(joiner);
+            //.map!(a => text(a[0], a[1].toString2())) // BUG BUG BUG
+            .map!f() // BUG BUG BUG
+            .join(", ");
 
         if (needs_paren) {
             s ~= ")";
         }
         return s;
     }
+
+    void mergeWith(Trie b) {
+        foreach (c, t; b.nexts) {
+            if (c in nexts) {
+                nexts[c].mergeWith(t);
+            } else {
+                nexts[c] = t;
+            }
+        }
+    }
 }
 
+struct W {
+    alias Trie!(string, string) T;
+    T start, cur;
+
+    this(T t) {
+        start = cur = t;
+    }
+
+    void reset() {
+        cur = start;
+    }
+    bool feed(dchar d) {
+        if (d in cur) {
+            cur = cur[d];
+            return true;
+        }
+        return false;
+    }
+    bool complete() @property {
+        return cur.complete;
+    }
+    string value() @property {
+        return cur.value;
+    }
+}
 
 void main() {
-    auto t = Trie(keywords);
+    auto kws = Trie!(string, string)(keywords.dup, keywords);
 
     string w = "alias this";
 
-    auto t2 = t;
+    auto t2 = kws;
 
-    foreach (dchar c; w) {
-        if (c in t) {
-            t2 = t2[c];
-        } else {
-            writeln(t2.complete);
-            if (t2.complete) {
-                writeln("found word ", t2.word);
-            }
-            break;
-        }
+    W l = W(kws);
+    while (l.feed(w.front)) {
+        w.popFront();
     }
+    assert(l.complete);
+    writeln(l.value);
 
-    writeln(t);
-    writeln(t2);
+    //writeln(kws);
+    //writeln(t2);
+
+
+    [1,2,3].each!((ref a) => a += 1 )().each!(a => writeln(a))().writeln();
 }
