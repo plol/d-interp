@@ -52,6 +52,7 @@ struct Val {
     this(char c) { char_val = c; }
     this(bool b) { bool_val = b; }
     this(int b) { int_val = b; }
+    this(ulong u) { ulong_val = u; }
 
     string toString() const {
         return "Val()";

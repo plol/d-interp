@@ -12,12 +12,12 @@ final class IR {
         if_,
         while_,
         switch_,
-        structdef,
-        classdef,
         // etc
-        statement,
-        expr,
+
         variable,
+        function_,
+        id,
+
         sequence,
 
         constant,
@@ -33,8 +33,6 @@ final class IR {
         deref,
 
         nothing,
-
-        LAST // DUNNO IF I NEED
     }
     static struct If {
         IR if_part, then_part, else_part;
@@ -50,20 +48,23 @@ final class IR {
         IR[] operands;
     }
 
-    Type type;
-
-    TI ti;
-
-    union {
+    union Data {
         If if_;
         While while_;
         Bin bin;
         Application application;
         Val val;
-        string var_name;
+        string name;
         IR[] sequence;
         IR next;
     }
+
+    Type type;
+    TI ti;
+    bool resolved;
+    Data data;
+    alias data this;
+
 
     this(Type t) {
         type = t;
@@ -80,6 +81,7 @@ final class IR {
     this(Type t, TI ti_, Val val1) {
         type = t;
         ti = ti_;
+        resolved = true;
         if (t == Type.constant) {
             val = val1;
         } else {
@@ -125,7 +127,11 @@ final class IR {
     this(Type t, string s) {
         type = t;
         if (t == Type.variable) {
-            var_name = s;
+            name = s;
+        } else if (t == Type.function_) {
+            name = s;
+        } else if (t == Type.id) {
+            name = s;
         } else {
             assert (0, to!string(t));
         }
@@ -147,3 +153,4 @@ final class IR {
         }
     }
 }
+

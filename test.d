@@ -24,7 +24,7 @@ import internal.typeinfo, internal.ctenv, internal.typecheck;
 int add_int(int a, int b) {
     return a + b;
 }
-int lt_int(int a, int b) {
+bool lt_int(int a, int b) {
     return a < b;
 }
 bool cast_int_bool(int a) {
@@ -48,6 +48,9 @@ void* aaGetRvalueX(void* aa, TypeInfo keyti, size_t valuesize, void* pkey) {
 void* cast_int_int_aa_p_void_p(int[int]* aa) {
     return cast(void*)aa;
 }
+void* cast_int_int_aa_void_p(int[int] aa) {
+    return cast(void*)aa;
+}
 
 int* cast_void_p_int_p(void* p) {
     return cast(int*)p;
@@ -55,14 +58,18 @@ int* cast_void_p_int_p(void* p) {
 
 
 
-IR call_var(string f, IR[] args...) {
-    return new IR(IR.Type.application,
-            new IR(IR.Type.variable, f),
-            args.dup);
+IR call(IR f, IR[] args...) {
+    return new IR(IR.Type.application, f, args.dup);
 }
 
 IR var(string n) {
     return new IR(IR.Type.variable, n);
+}
+IR fun(string n) {
+    return new IR(IR.Type.function_, n);
+}
+IR id(string n) {
+    return new IR(IR.Type.id, n);
 }
 IR deref(IR ir) {
     return new IR(IR.Type.deref, ir);
@@ -86,6 +93,10 @@ IR typeid_(IR ir) {
     return new IR(IR.Type.typeid_, ir);
 }
 
+IR while_(IR cond, IR body_) {
+    return new IR(IR.Type.while_, cond, body_);
+}
+
 
 void main() {
     auto ct_env = new CTEnv();
@@ -103,8 +114,10 @@ void main() {
     ct_env.funcdeclare!lt_int("$lt_int");
     ct_env.funcdeclare!cast_int_bool("$cast_int_bool");
     ct_env.funcdeclare!cast_int_int_aa_p_void_p("$cast_int_int_aa_p_void_p");
+    ct_env.funcdeclare!cast_int_int_aa_void_p("$cast_int_int_aa_void_p");
     ct_env.funcdeclare!not("$not");
     ct_env.funcdeclare!aaGetX("$aaGetX");
+    ct_env.funcdeclare!aaGetRvalueX("$aaGetRvalueX");
     ct_env.funcdeclare!cast_void_p_int_p("$cast_void_p_int_p");
 
 //    // while (a < 10)
@@ -149,17 +162,37 @@ void main() {
     // *cast(int*)($aaGetX(cast(void*)myaa, typeid(mykey), 4u, &mykey)) = 5;
     // which is what will be generated hopefully
 
-    auto lookup_ir = call_var("$aaGetX",
-            call_var("$cast_int_int_aa_p_void_p",
-                addressof(var("myaa"))),
-            typeid_(var("mykey")),
-            constant(ct_env, 4u),
-            addressof(var("mykey")));
+    IR lookup_lv(string aa_name, string var_name) {
+        return call(id("$aaGetX"),
+                call(id("$cast_int_int_aa_p_void_p"),
+                    addressof(id(aa_name))),
+                typeid_(id(var_name)),
+                constant(ct_env, int.sizeof),
+                addressof(id(var_name)));
+    }
+    IR lookup_rv(string aa_name, string var_name) {
+        return call(id("$aaGetRvalueX"),
+                call(id("$cast_int_int_aa_void_p"),
+                    id(aa_name)),
+                typeid_(id(var_name)),
+                constant(ct_env, int.sizeof),
+                addressof(id(var_name)));
+    }
 
     auto ir = seq(
-            set(var("mykey"), constant(ct_env, 2)),
-            set(deref(call_var("$cast_void_p_int_p", lookup_ir)),
+            set(id("mykey"), constant(ct_env, 2)),
+            set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
                 constant(ct_env, 5)),
+
+            while_(call(id("$lt_int"),
+                    deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
+                    constant(ct_env, 10)),
+                seq(
+                    set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
+                        call(id("$add_int"),
+                            deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
+                            constant(ct_env, 1)))),
+                ),
             );
     resolve(ir, ct_env);
 

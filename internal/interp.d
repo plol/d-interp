@@ -15,8 +15,8 @@ Val interpret(IR ir, Env env) {
         IR.Type.sequence: &interpret_sequence,
         IR.Type.application: &interpret_application,
         IR.Type.assignment: &interpret_assignment,
-        IR.Type.typeid_: &interpret_typeid,
         IR.Type.addressof: &interpret_addressof,
+        IR.Type.deref: &interpret_deref,
     ];
     assert (ir.type in table, text("wtf bro O_o ", ir.type));
     return table[ir.type](ir, env);
@@ -46,7 +46,7 @@ Val interpret_constant(IR ir, Env env) {
 }
 
 Val interpret_variable(IR ir, Env env) {
-    return env.lookup(ir.var_name);
+    return env.lookup(ir.name);
 }
 
 Val interpret_sequence(IR ir, Env env) {
@@ -59,7 +59,7 @@ Val interpret_sequence(IR ir, Env env) {
 Val interpret_assignment(IR ir, Env env) {
     auto result = interpret(ir.bin.rhs, env);
     if (ir.bin.lhs.type == IR.Type.variable) {
-        env.update(ir.bin.lhs.var_name, result);
+        env.update(ir.bin.lhs.name, result);
     } else if (ir.bin.lhs.type == IR.Type.deref) {
         auto ptr = interpret(ir.bin.lhs.next, env);
         auto size = ir.bin.lhs.ti.primitive.tsize();
@@ -93,16 +93,21 @@ Val interpret_application(IR ir, Env env) {
     return res;
 }
 
-Val interpret_typeid(IR ir, Env env) {
-    if (ir.next.ti.type == TI.Type.int_) {
-        return Val(typeid(int));
+Val interpret_addressof(IR ir, Env env) {
+    if (ir.next.type == IR.Type.variable) {
+        return Val(&env.lookup(ir.next.name));
     } else {
-        assert (0, text(ir.next.ti.type));
+        assert (0);
     }
 }
 
-Val interpret_addressof(IR ir, Env env) {
-    auto res = Val(&env.lookup(ir.next.var_name));
-    return res;
+Val interpret_deref(IR ir, Env env) {
+    assert (ir.next.ti.type == TI.Type.pointer);
+
+    Val ret;
+    auto ptr = ir.next.interpret(env);
+    auto size = ir.bin.lhs.ti.primitive.tsize();
+    (cast(void*)(&ret.tagged_union))[0 .. size] = ptr.pointer[0 .. size];
+    return ret;
 }
 

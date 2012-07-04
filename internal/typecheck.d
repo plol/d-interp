@@ -1,7 +1,7 @@
 module internal.typecheck;
 
 import std.conv, std.exception, std.stdio, std.algorithm, std.range;
-import internal.typeinfo, internal.ctenv, internal.ir;
+import internal.typeinfo, internal.ctenv, internal.ir, internal.val;
 
 TI resolve(IR ir, CTEnv env) {
     immutable table = [
@@ -9,45 +9,56 @@ TI resolve(IR ir, CTEnv env) {
         IR.Type.while_: &resolve_while,
         IR.Type.nothing: &resolve_nothing,
         IR.Type.variable: &resolve_variable,
-        IR.Type.constant: &resolve_constant,
         IR.Type.sequence: &resolve_sequence,
         IR.Type.application: &resolve_application,
         IR.Type.assignment: &resolve_assignment,
         IR.Type.typeid_: &resolve_typeid,
         IR.Type.addressof: &resolve_addressof,
         IR.Type.deref: &resolve_deref,
+        IR.Type.function_: &resolve_function,
+        IR.Type.id: &resolve_id,
         ];
 
+    if (ir.resolved) {
+        return ir.ti;
+    }
     if (ir.type in table) {
-        return table[ir.type](ir, env);
+        auto ret = table[ir.type](ir, env);
+        ir.ti = ret;
+        ir.resolved = true;
+        return ret;
     }
     assert (0, "wtf bro :D");
 }
 
 TI resolve_typeid(IR ir, CTEnv env) {
+
     auto next_ti = ir.next.resolve(env);
+    //writeln("NEXT TI IN TYPEID = ", next_ti);
 
-    ir.ti.type = TI.Type.class_;
-    ir.ti.primitive = typeid(int[int]); // BUG
-    return ir.ti;
+    // swap type to constant :-)
+    ir.type = IR.Type.constant;
+    ir.val = Val(next_ti.primitive);
+
+    TI ti;
+    ti.type = TI.Type.class_;
+    ti.primitive = typeid(typeid(int)); // BUG
+
+    return ti;
 }
-
 
 TI resolve_addressof(IR ir, CTEnv env) {
     auto next_ti = ir.next.resolve(env);
 
-    ir.ti.type = TI.Type.pointer;
+    TI ti;
+    ti.type = TI.Type.pointer;
 
-    ir.ti.pointer = new TypeInfo_Pointer;
-    ir.ti.pointer.m_next = next_ti.primitive;
+    ti.pointer = new TypeInfo_Pointer;
+    ti.pointer.m_next = next_ti.primitive;
 
-    ir.ti.ext_data ~= next_ti;
+    ti.ext_data ~= next_ti;
 
-    return ir.ti;
-}
-
-TI resolve_constant(IR ir, CTEnv env) {
-    return ir.ti;
+    return ti;
 }
 
 TI resolve_if(IR ir, CTEnv env) {
@@ -66,7 +77,7 @@ TI resolve_while(IR ir, CTEnv env) {
 
     auto condition_type = ir.while_.condition.resolve(env);
 
-    enforce(condition_type == env.get_ti!bool());
+    enforce(condition_type == env.get_ti!bool(), text(condition_type, " aint bool"));
 
     ir.while_.body_.resolve(env);
 
@@ -86,9 +97,23 @@ TI resolve_application(IR ir, CTEnv env) {
         return resolve(ir, env);
     }
 
-    auto application = ir.application;
-    auto func_type = application.operator.resolve(env);
-    auto arg_types = application.operands.map!resolve_in_env().array();
+    auto arg_types = ir.application.operands.map!resolve_in_env().array();
+
+    ir.application.operator.resolve(env);
+
+    auto op = ir.application.operator;
+    if (op.type == IR.Type.function_) {
+        // swap type to constant, DO OVERLOADING RESOLUTION, ifti? D:
+        ir.application.operator = env.get_function(op.name);
+    } else if (op.type == IR.Type.variable) {
+        // do nothing i guess
+        assert (0);
+    } else {
+        assert (0, "can only call functions and variables (?)");
+    }
+
+    auto func_type = ir.application.operator.resolve(env);
+
     auto assumed_arg_types = func_type.operands;
 
     enforce(arg_types.length == assumed_arg_types.length);
@@ -110,8 +135,7 @@ TI resolve_application(IR ir, CTEnv env) {
 
 
 TI resolve_variable(IR ir, CTEnv env) {
-    ir.ti = env.typeof_(ir.var_name);
-    return ir.ti;
+    return env.typeof_(ir.name);
 }
 TI resolve_sequence(IR ir, CTEnv env) {
     foreach (e; ir.sequence) {
@@ -135,6 +159,22 @@ TI resolve_nothing(IR ir, CTEnv env) {
 TI resolve_deref(IR ir, CTEnv env) {
     auto next = ir.next.resolve(env);
     enforce(next.type == TI.Type.pointer);
-    ir.ti = next.next;
-    return ir.ti;
+    return next.next;
 }
+
+TI resolve_function(IR ir, CTEnv env) {
+    return env.get_function(ir.name).ti;
+}
+
+TI resolve_id(IR ir, CTEnv env) {
+    IR res = env.lookup(ir.name);
+
+    assert (res.type == IR.Type.function_
+            || res.type == IR.Type.variable,
+            text(ir.type));
+    ir.type = res.type;
+
+    assert (res.resolved);
+    return res.ti;
+}
+

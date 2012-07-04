@@ -12,16 +12,9 @@ final class CTEnv {
 
     // AA of function name -> overload set  (????)
     IR[][string] functions;
+    IR[string] vars;
 
     TI[string] tis;
-
-    struct VarDecl {
-        TI ti;
-        bool has_initializer;
-        Val val;
-    }
-
-    VarDecl[string] vars;
 
     ref TI typeof_(string var_name) {
         if (var_name in vars) {
@@ -32,22 +25,46 @@ final class CTEnv {
         return parent.typeof_(var_name);
     }
 
+    IR get_function(string func_name) {
+        assert (functions[func_name].length == 1);
+        return functions[func_name][0];
+    }
+
+    IR lookup(string name) {
+        assert (!(name in functions && name in vars));
+
+        if (name in functions) {
+            assert (functions[name].length == 1); // NO OVERLOADING
+            auto ret = new IR(IR.Type.function_, name);
+            ret.ti = functions[name][0].ti;
+            ret.resolved = true;
+            return ret;
+        } else if (name in vars) {
+            auto ret = new IR(IR.Type.variable, name);
+            ret.ti = vars[name].ti;
+            ret.resolved = true;
+            return ret;
+        }
+        enforce (parent !is null, text(name, " not in env, and no parent"));
+        return parent.lookup(name);
+    }
+
     void autodeclare(T)(string name, T t) {
-        vars[name] = VarDecl(get_ti!T(), true, Val(t));
+        vars[name] = new IR(IR.Type.constant, get_ti!T(), Val(t));
     }
     void aadeclare(T)(string name, T t) {
-        vars[name] = VarDecl(get_ti!T(), true, Val(cast(void*)t));
+        vars[name] = new IR(IR.Type.constant, get_ti!T(), Val(cast(void*)t));
     }
     void funcdeclare(Ts...)(string name) if (Ts.length == 1) {
         alias Ts[0] T;
-        vars[name] = VarDecl(get_ti!(typeof(&T))(), true, Val(&wrap!T));
+        functions[name] ~= new IR(IR.Type.constant,
+                get_ti!(typeof(&T))(), Val(&wrap!T));
     }
 
     Env get_runtime_env() {
         auto env = new Env;
 
         foreach (var_name, var_decl; vars) {
-            assert (var_decl.has_initializer);
             env.declare(var_name, var_decl.val);
         }
 
@@ -147,6 +164,8 @@ Val wrap(F...)(Val[] vars) {
 template preUnpackVar(T) {
     static if (is(T U == U*) || is(T == class)) {
         enum preUnpackVar = "cast(" ~ T.stringof ~ ")";
+    } else static if (is(T V == V[K], K)) {
+        enum preUnpackVar = "*cast(" ~ T.stringof ~ "*)&";
     } else {
         enum preUnpackVar = "";
     }
@@ -156,6 +175,8 @@ template unpackVar(T) {
         enum unpackVar = "int_val";
     } else static if (is(T == uint)) {
         enum unpackVar = "uint_val";
+    } else static if (is(T == ulong)) {
+        enum unpackVar = "ulong_val";
     } else static if (is(T == bool)) {
         enum unpackVar = "bool_val";
     } else static if (is(T U == U*)) {
@@ -165,7 +186,7 @@ template unpackVar(T) {
     } else static if (is(T V == V[K], K)) {
         enum unpackVar = "pointer";
     } else {
-        static assert (0);
+        static assert (0, T.stringof);
     }
 }
 string unpackVars(Ts...)(int x = 0) {

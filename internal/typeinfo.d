@@ -1,6 +1,6 @@
 module internal.typeinfo;
 
-import std.conv, std.typetuple;
+import std.conv, std.typetuple, std.array;
 
 
 alias TypeTuple!(
@@ -117,5 +117,11 @@ struct TI {
         return type == other.type
             //&& primitive == other.primitive
             && ext_data == other.ext_data;
+    }
+
+    string toString() {
+        return "TI(" ~ to!string(type)
+            ~ (ext_data.empty ? "" : " " ~ to!string(ext_data))
+            ~ ")";
     }
 }
