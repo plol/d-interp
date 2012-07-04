@@ -1,5 +1,7 @@
 module lexer;
 
+import std.file;
+
 import std.stdio, std.conv, std.typecons, std.exception;
 import std.algorithm, std.range, std.array, std.typetuple, std.regex;
 
@@ -385,9 +387,9 @@ template tuples(Rest...) {
 }
 
 template RegexEscapeChar(string s) {
-    static if (s == "." || s == "\\" || s == "(" || s == ")" || s == "|"
+    static if (s == "." || s == "$" || s == "(" || s == ")" || s == "|"
             || s == "+" || s == "*" || s == "?" || s == "{" || s == "}"
-            || s == "^" || s == "$" || s == "[" || s == "]") {
+            || s == "^" || s == "[" || s == "]" || s == "\\") {
         enum RegexEscapeChar = "\\" ~ s;
     } else {
         enum RegexEscapeChar = s;
@@ -401,23 +403,6 @@ template RegexEscape(string s) {
     }
 }
 
-string fuck_it() {
-    char[] s = [strings!operators].join("").dup;
-    (cast(ubyte[])s).sort();
-
-    string ret;
-    foreach (c; s) {
-        if (!ret.empty && c == ret.back) continue;
-        ret ~= c;
-    }
-
-    return ret;
-}
-
-enum opchars = RegexEscape!(fuck_it());
-
-//enum identifyerre = "([^" ~ opchars ~ "\\s\\d\"][^" ~ opchars ~ "\\s\"]*)";
-//enum identifyerre = r"\w(\w|\d)*";
 enum identifyerre = r"[\p{Alphabetic}]\w*";
 
 enum operatorre = [staticMap!(RegexEscape, strings!operators)
@@ -643,10 +628,7 @@ void main() {
     //hackety time
 
 
-    auto input = "while(a<123){\r\na+=1;\r\n \"foo\"}\r foreach(i ; 0..1) f();";
-    input ~= " q\"/as
-        df/\"   x\"12 34 4\" \"\\\"\"";
-
+    auto input = "test.d".readText();
     foreach (token; Lexer(input)) {
         writeln(token);
     }
