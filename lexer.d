@@ -180,6 +180,7 @@ enum TOK {
         pound,            //"#",                       
 
         string_,
+        char_lit,
         num,
         id,
         eof,
@@ -190,6 +191,10 @@ struct Token {
     string str;
     TOK tok;
     alias tok this;
+
+    bool opEquals(Token o) {
+        return line == o.line && str == o.str && tok == o.tok;
+    }
 }
 
 alias TypeTuple!("\u0020", "\u0009", "\u000B", "\u000C") whitespace;
@@ -403,26 +408,47 @@ template RegexEscape(string s) {
     }
 }
 
-enum identifyerre = r"[\p{Alphabetic}]\w*";
+enum identifyerre = r"[\p{Alphabetic}\p{Mark}\p{Connector_Punctuation}]\w*";
 
 enum operatorre = [staticMap!(RegexEscape, strings!operators)
     ].sort!"a.length > b.length"().join("|");
 
 enum stringre = `"([^"\\]|\\.)*"`;
-enum numberre = `\.\d+|(\d+)\.\.|\d+\.\d*|0x[0-9a-fA-F]+|\d+`;
+
+// FloatLiteral = Float | Float Suffix
+// Float = DecimalFloat | HexFloat
+// DecimalFloat = LeadingDecimal "."
+//              | LeadingDecimal "." DecimalDigits
+//              | 
+
+enum decexp_q = `([eE][+-]?[_\d]+)?`;
+enum hexexp_q = `([pP][+-]?[_\d]+)?`;
+
+enum fsuf_q = `[fFL]*`;
+
+enum numberre = `\.\d[\d_]*` ~ decexp_q ~ fsuf_q
+        ~ `|` ~ `\d[\d_]*\.\.` // hack
+        ~ `|` ~ `0[xX][0-9a-fA-F_]+(\.[0-9a-fA-F_]*)?` ~ hexexp_q ~ fsuf_q
+        ~ `|` ~ `\d[\d_]*(\.\d[\d_]*)?` ~ decexp_q ~ fsuf_q
+        ~ `|` ~ `\d[\d_]*` ~ fsuf_q
+        ;
+
+enum charre = r"'([^'\\]|\\.[^']*)'";
 enum finalre = "^(" ~ identifyerre
               ~ "|" ~ numberre
+              ~ "|" ~ charre
               ~ "|" ~ operatorre
               ~ ")";
 
 
-typeof(regex("")) token_re, string_re, number_re, ident_re;
+typeof(regex("")) token_re, number_re, ident_re, char_re;
 TOK[string] lookup_table;
 
 static this() {
     token_re = regex(finalre);
-    ident_re = regex(identifyerre);
-    number_re = regex(numberre);
+    ident_re = regex("^("~identifyerre~")");
+    number_re = regex("^("~numberre~")");
+    char_re = regex("^("~charre~")");
 
     foreach (t; [tuples!operators, tuples!keywords]) {
         lookup_table[t[0]] = t[1];
@@ -443,7 +469,7 @@ struct Lexer {
     void feed(string s) {
         if (input.empty) {
             input = s;
-            line = 0;
+            line = 1;
             popFront();
         } else {
             assert (0);
@@ -469,6 +495,20 @@ struct Lexer {
         return false;
     }
     private bool skipComments() {
+        if (input.startsWith("//")) {
+            auto i2 = input.find("\n");
+            if (i2.empty) {
+                input = i2;
+                return true;
+            }
+            i2.popFront();
+
+            line += 1;
+            input = i2;
+            return true;
+        } else if (input.startsWith(`/+`, `/*`)) {
+            assert (0, "multi line comments unsupported :(");
+        }
         return false;
     }
 
@@ -492,8 +532,7 @@ struct Lexer {
             input = i2;
         }
 
-        void parmatch(dchar lpar, dchar rpar, dchar end) {
-            int nest = 1;
+        void parmatch(dchar lpar, dchar rpar, dchar end, int nest=1) {
             for (; !i2.empty; i2.popFront()) {
                 auto c = i2.front;
                 if (c == end && nest == 0) {
@@ -517,7 +556,7 @@ struct Lexer {
         if (i2.startsWith(`q{`)) {
             i2.popFront();
             i2.popFront();
-            return parmatch('{', '}', '}');
+            return parmatch('{', '}', '}', 0);
         } else if (i2.startsWith(`q"`)) {
             i2.popFront();
             i2.popFront();
@@ -538,8 +577,9 @@ struct Lexer {
                 }
             }
             return parmatch(lpar, rpar, '"');
-        } else if (i2.startsWith(`x"`, `"`)) {
+        } else if (i2.startsWith(`x"`, `"`, "`")) {
             auto xmode = i2.startsWith(`x`);
+            auto rmode = i2.startsWith("`");
             if (xmode) {
                 i2.popFront();
             }
@@ -551,9 +591,9 @@ struct Lexer {
                     line += 1;
                 } else if (i2.startsWith(single_newline)) {
                     line += 1;
-                } else if (!xmode && i2.startsWith(`\`)) {
+                } else if (!xmode && !rmode && i2.startsWith(`\`)) {
                     i2.popFront();
-                } else if (c == '"') {
+                } else if ((!rmode && c == '"') || (rmode && c == '`')) {
                     i2.popFront();
                     finalize_token();
                     return;
@@ -586,7 +626,7 @@ struct Lexer {
             return;
         }
 
-        if (input.startsWith(`q"`, `q{`, `x"`, `"`)) {
+        if (input.startsWith(`q"`, `q{`, `x"`, `"`, "`")) {
             make_string_token();
             return;
         }
@@ -597,7 +637,7 @@ struct Lexer {
         }
 
         if (cap.length == 0) {
-            writeln("error");
+            writeln("error(",line,"): ", tuple(input[0 .. min($, 30)]));
             input = "";
             popFront();
             return;
@@ -609,6 +649,8 @@ struct Lexer {
         auto f = cap in lookup_table;
         if (f !is null) {
             tok = *f;
+        } else if (cap.match(char_re)) {
+            tok = TOK.char_lit;
         } else if (cap.match(number_re)) {
             tok = TOK.num;
         } else if (cap.match(ident_re)) {
@@ -623,14 +665,58 @@ struct Lexer {
     }
 }
 
-void main() {
+unittest {
+    string input;
+    
+    input = "_1";
+    assert (equal(Lexer(input), [
+                Token(1, "_1", TOK.id),
+                ]),
+            text(Lexer(input)));
+    input = "_a";
+    assert (equal(Lexer(input), [
+                Token(1, "_a", TOK.id),
+                ]),
+            text(Lexer(input)));
 
-    //hackety time
+
+    input = "q{{asdf}} \nq\"/asdf/\" \n x\"1234\" \n \"as\\\"d\nf\" a _1";
+    assert (equal(Lexer(input), [
+                Token(1, "q{{asdf}}", TOK.string_),
+                Token(2, "q\"/asdf/\"", TOK.string_),
+                Token(3, "x\"1234\"", TOK.string_),
+                Token(4, "\"as\\\"d\nf\"", TOK.string_),
+                Token(5, "a", TOK.id),
+                Token(5, "_1", TOK.id),
+                ]),
+            text(Lexer(input)));
 
 
-    auto input = "test.d".readText();
-    foreach (token; Lexer(input)) {
-        writeln(token);
-    }
+    input = "123_456.567_8         // 123456.5678
+        1_2_3_4_5_6_.5_6_7_8 // 123456.5678
+        1_2_3_4_5_6_.5e-6_   // 123456.5e-6";
+
+    assert (equal(Lexer(input), [
+                Token(1, "123_456.567_8", TOK.num),
+                Token(2, "1_2_3_4_5_6_.5_6_7_8", TOK.num),
+                Token(3, "1_2_3_4_5_6_.5e-6_", TOK.num),
+                ]),
+            text(Lexer(input)));
+
+
+    input = "
+        0x1.FFFFFFFFFFFFFp1023 // double.max
+        0x1p-52                // double.epsilon
+        1.175494351e-38F       // float.min
+        ";
+
+    assert (equal(Lexer(input), [
+                Token(2, "0x1.FFFFFFFFFFFFFp1023", TOK.num),
+                Token(3, "0x1p-52", TOK.num),
+                Token(4, "1.175494351e-38F", TOK.num),
+                ]),
+            text(Lexer(input)));
+    assert (to!real("123456.78e90") == 12_34_56.78e90L);
+    assert (to!double("0x1.FFFFFFFFFFFFFp1023") == 0x1.FFFFFFFFFFFFFp1023);
 
 }
