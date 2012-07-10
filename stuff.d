@@ -1,15 +1,11 @@
 import std.stdio;
 
+import std.format, std.array, std.string;
 
-
-
-
-
-R each(alias fun,R)(R r) {
-    foreach (ref e; r) {
-        fun(e);
-    }
-    return r;
+string format(T...)(T t) {
+    auto app = appender!string();
+    formattedWrite(app, t);
+    return app.data;
 }
 
 struct Trie(K,V) {
@@ -41,7 +37,7 @@ struct Trie(K,V) {
                 return a.front != f;
             }
 
-            size_t len = ks.until!starts_with_diff() .walkLength();
+            size_t len = ks.until!starts_with_diff().walkLength();
 
             foreach (i; 0 .. len) {
                 ks[i].popFront();
@@ -117,4 +113,45 @@ struct Trie(K,V) {
             }
         }
     }
+}
+
+
+
+struct StupidMap(alias f, R) {
+    R r;
+    auto front() @property {
+        return f(r.front);
+    }
+    void popFront() {
+        auto f = r.front;
+        while (!r.empty && r.front == f) {
+            r.popFront();
+        }
+    }
+    bool empty() @property {
+        return r.empty;
+    }
+}
+auto stupid_map(alias f, R)(R r) {
+    return StupidMap!(f, R)(r);
+}
+
+struct StupidUniq(R) {
+    R r;
+    auto front() @property {
+        return r.front;
+    }
+    void popFront() {
+        auto f = r.front;
+        while (!r.empty && r.front == f) {
+            r.popFront();
+        }
+    }
+    bool empty() @property {
+        return r.empty;
+    }
+}
+
+auto stupid_uniq(R)(R r) {
+    return StupidUniq!R(r);
 }
