@@ -32,102 +32,105 @@ import parsergen;
 //    [Sym("S"), Sym("S"), Sym(Tok.a)],
 //    ];
 
+Tok getTok(Token t) { return t.tok; }
 
-enum Rule[] grammar = [
-    rule("S", "StmtList"),
 
-    rule("StmtList", "Stmt"),
-    rule("StmtList", "StmtList", "Stmt"),
+Rule!Tok[] grammar = [
+    rule!Tok("S", "StmtList"),
 
-    rule("Stmt", "While"),
-    rule("Stmt", "Foreach"),
-    rule("Stmt", "If"),
-    rule("Stmt", "Expr", Tok.semi),
-    rule("Stmt", "CurlStmtList"),
+    rule!Tok("StmtList", "Stmt"),
+    rule!Tok("StmtList", "StmtList", "Stmt"),
 
-    rule("While", Tok.while_, "ParExpr", "CurlStmtList"),
+    rule!Tok("Stmt", "While"),
+    rule!Tok("Stmt", "Foreach"),
+    rule!Tok("Stmt", "If"),
+    rule!Tok("Stmt", "Expr", Tok.semi),
+    rule!Tok("Stmt", "CurlStmtList"),
 
-    rule("Foreach", Tok.foreach_, Tok.lpar, "ForeachTypeList", Tok.semi,
-            "Expr", Tok.rpar, "CurlStmtList"),
-    rule("Foreach", Tok.foreach_, Tok.lpar, "ForeachTypeList", Tok.semi,
-            "Expr", Tok.dotdot, "Expr", Tok.rpar, "CurlStmtList"),
+    rule!Tok("While", Tok.while_, "ParExpr", "CurlStmtList"),
 
-    rule("If", Tok.if_, "ParExpr", "CurlStmtList"),
-    rule("If", Tok.if_, "ParExpr", "CurlStmtList", Tok.else_, "CurlStmtList"),
+    rule!Tok("Foreach", Tok.foreach_, Tok.lpar, "ForeachTypeList", Tok.semi,
+                "Expr", Tok.rpar, "CurlStmtList"),
+    rule!Tok("Foreach", Tok.foreach_, Tok.lpar, "ForeachTypeList", Tok.semi,
+                "Expr", Tok.dotdot, "Expr", Tok.rpar, "CurlStmtList"),
 
-    rule("ForeachTypeList", "ForeachType"),
-    rule("ForeachTypeList", "ForeachTypeList", Tok.comma, "ForeachType"),
+    rule!Tok("If", Tok.if_, "ParExpr", "CurlStmtList"),
+    rule!Tok("If", Tok.if_, "ParExpr", "CurlStmtList", Tok.else_, "CurlStmtList"),
 
-    rule("ForeachType", Tok.id),
-    rule("ForeachType", Tok.ref_, Tok.id),
+    rule!Tok("ForeachTypeList", "ForeachType"),
+    rule!Tok("ForeachTypeList", "ForeachTypeList", Tok.comma, "ForeachType"),
 
-    rule("CurlStmtList", Tok.lcurl, "StmtList", Tok.rcurl),
-    rule("CurlStmtList", Tok.lcurl, Tok.rcurl),
+    rule!Tok("ForeachType", Tok.id),
+    rule!Tok("ForeachType", Tok.ref_, Tok.id),
 
-    rule("Expr", "CommaExpr"),
-    rule("CommaExpr", "AssignExpr"),
-    rule("CommaExpr", "CommaExpr", Tok.comma, "AssignExpr"),
-    rule("AssignExpr", "CondExpr"),
-    rule("AssignExpr", "CondExpr", "OpSet", "AssignExpr"),
+    rule!Tok("CurlStmtList", Tok.lcurl, "StmtList", Tok.rcurl),
+    rule!Tok("CurlStmtList", Tok.lcurl, Tok.rcurl),
 
-    rule("CondExpr", "OpExpr"),
-    rule("CondExpr", "OpExpr", Tok.question, "Expr", Tok.colon, "CondExpr"),
+    rule!Tok("Expr", "CommaExpr"),
+    rule!Tok("CommaExpr", "AssignExpr"),
+    rule!Tok("CommaExpr", "CommaExpr", Tok.comma, "AssignExpr"),
+    rule!Tok("AssignExpr", "CondExpr"),
+    rule!Tok("AssignExpr", "CondExpr", "OpSet", "AssignExpr"),
 
-    rule("OpExpr", "PrimaryExpr"),
-    rule("OpExpr", "Prefix", "OpExpr"),
-    rule("OpExpr", "OpExpr", "Postfix"),
-    rule("OpExpr", "OpExpr", "BinOp", "OpExpr"),
+    rule!Tok("CondExpr", "OpExpr"),
+    rule!Tok("CondExpr", "OpExpr", Tok.question, "Expr", Tok.colon, "CondExpr"),
 
-    rule("PrimaryExpr", "ParExpr"),
-    rule("PrimaryExpr", "PrimaryExprT"),
-    rule("PrimaryExprT", Tok.id),
-    rule("PrimaryExprT", Tok.num),
-    rule("PrimaryExprT", Tok.string_),
+    rule!Tok("OpExpr", "PrimaryExpr"),
+    rule!Tok("OpExpr", "Prefix", "OpExpr"),
+    rule!Tok("OpExpr", "OpExpr", "Postfix"),
+    rule!Tok("OpExpr", "OpExpr", "BinOp", "OpExpr"),
 
-    rule("ParExpr", Tok.lpar, "Expr", Tok.rpar),
+    rule!Tok("PrimaryExpr", "ParExpr"),
+    rule!Tok("PrimaryExpr", Tok.id),
+    rule!Tok("PrimaryExpr", Tok.num),
+    rule!Tok("PrimaryExpr", Tok.string_),
 
-    rule("Prefix", Tok.addadd),
-    rule("Prefix", Tok.subsub),
-    rule("Prefix", Tok.add),
-    rule("Prefix", Tok.sub),
-    rule("Prefix", Tok.tilde),
-    rule("Prefix", Tok.bang),
+    rule!Tok("ParExpr", Tok.lpar, "Expr", Tok.rpar),
 
-    rule("Postfix", Tok.addadd),
-    rule("Postfix", Tok.subsub),
-    rule("Postfix", "ArgList"),
-    rule("Postfix", "Index"),
-    rule("Postfix", "Slice"),
+    rule!Tok("Prefix", Tok.addadd),
+    rule!Tok("Prefix", Tok.subsub),
+    rule!Tok("Prefix", Tok.add),
+    rule!Tok("Prefix", Tok.sub),
+    rule!Tok("Prefix", Tok.tilde),
+    rule!Tok("Prefix", Tok.bang),
 
-    rule("ArgList", Tok.lpar, Tok.rpar),
-    rule("ArgList", Tok.lpar, "ComExprList", Tok.rpar),
+    rule!Tok("Postfix", Tok.addadd),
+    rule!Tok("Postfix", Tok.subsub),
+    rule!Tok("Postfix", "ArgList"),
+    rule!Tok("Postfix", "Index"),
+    rule!Tok("Postfix", "Slice"),
 
-    rule("Index", Tok.lbra, "ComExprList", Tok.rbra),
-    rule("Slice", Tok.lbra, Tok.rbra),
-    rule("Slice", Tok.lbra, "AssignExpr", Tok.dotdot, "AssignExpr"),
+    rule!Tok("ArgList", Tok.lpar, Tok.rpar),
+    rule!Tok("ArgList", Tok.lpar, "ComExprList", Tok.rpar),
 
-    rule("ComExprList", "AssignExpr"),
-    rule("ComExprList", "ComExprList", Tok.comma, "AssignExpr"),
+    rule!Tok("Index", Tok.lbra, "ComExprList", Tok.rbra),
+    rule!Tok("Slice", Tok.lbra, Tok.rbra),
+    rule!Tok("Slice", Tok.lbra, "AssignExpr", Tok.dotdot, "AssignExpr"),
 
-    rule("OpSet", Tok.set),
-    rule("OpSet", Tok.op_set),
+    rule!Tok("ComExprList", "AssignExpr"),
+    rule!Tok("ComExprList", "ComExprList", Tok.comma, "AssignExpr"),
 
-    rule("BinOp", Tok.add),
-    rule("BinOp", Tok.and),
-    rule("BinOp", Tok.star),
-    rule("BinOp", Tok.sub),
-    rule("BinOp", Tok.tilde),
-    rule("BinOp", Tok.bin_op),
+    rule!Tok("OpSet", Tok.set),
+    rule!Tok("OpSet", Tok.op_set),
+
+    rule!Tok("BinOp", Tok.add),
+    rule!Tok("BinOp", Tok.and),
+    rule!Tok("BinOp", Tok.star),
+    rule!Tok("BinOp", Tok.sub),
+    rule!Tok("BinOp", Tok.tilde),
+    rule!Tok("BinOp", Tok.bin_op),
     ];
+
+alias ParserGen!(Token, string, Tok, getTok, grammar, "S", Tok.eof) P;
 
 void main() {
 
-    string delegate(StackItem[])[string] reduction_table;
+    string delegate(P.StackItem[])[string] reduction_table;
 
 
-    string delegate(StackItem) sif =
+    string delegate(P.StackItem) sif =
         a => a.terminal ? "'" ~ a.token.str ~ "'" : a.result;
-    string delegate(StackItem[]) rf =
+    string delegate(P.StackItem[]) rf =
         ts => ts.length == 1 ? sif(ts[0]) : "(" ~ ts.map!sif.join(" ") ~ ")";
 
     reduction_table["S"]            = rf;
@@ -159,7 +162,7 @@ void main() {
     writeln("HI");
     auto sw = StopWatch();
     sw.start();
-    auto p = parsergen.Parser(grammar, "S", Tok.eof, reduction_table);
+    auto p = P.Parser(reduction_table);
     sw.stop();
     writeln("TOOK ", sw.peek().hnsecs / 10_000.0, " ms!",
            " (", p.states.length, ")");
@@ -170,7 +173,7 @@ void main() {
     }
 
     auto input = "
-        1 > 2 ? x : y += 2 > 1 ? y : 1 > 2 ? x : x;
+        1;
     ";
 
     foreach (tok; Lexer(input)) {

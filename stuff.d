@@ -1,11 +1,18 @@
 import std.stdio;
 
-import std.format, std.array, std.string;
+import std.typecons, std.functional, std.conv, std.traits, std.range;
+import std.format, std.array, std.string, std.algorithm;
 
 string format(T...)(T t) {
     auto app = appender!string();
     formattedWrite(app, t);
     return app.data;
+}
+
+T[] make_set(T)(ref T[] ts) {
+    auto rest = ts.sort().release().uniq().copy(ts);
+    ts = ts[0 .. $ - rest.length];
+    return ts;
 }
 
 struct Trie(K,V) {
@@ -114,7 +121,88 @@ struct Trie(K,V) {
         }
     }
 }
+struct TrieSet(K) {
+    alias ElementType!K E;
+    private Tuple!(E, TrieSet)[] nexts;
+    bool complete;
 
+    private auto nextsFor(E e) {
+        auto dummy = tuple(e, TrieSet());
+        return assumeSorted!"a[0] < b[0]"(nexts).equalRange(dummy).release();
+    }
+
+    this(K k) {
+        insert(k);
+    }
+
+    void insert(K k) {
+        if (k.empty) {
+            complete = true;
+            return;
+        }
+        auto f = k.front;
+        k.popFront();
+        auto nexts1 = nextsFor(f);
+        if (nexts1.empty) {
+            nexts ~= tuple(f, TrieSet(k));
+            insertionSort_1!"a[0] < b[0]"(nexts);
+        } else {
+            assert (nexts1.length == 1);
+            nexts1.front[1].insert(k);
+        }
+    }
+
+    bool opIn_r(K k) {
+        if (k.empty) return complete;
+        auto f = k.front;
+        k.popFront();
+        auto nexts1 = nextsFor(f);
+        return !nexts1.empty && k in nexts1.front[1];
+    }
+
+    string toString() {
+        string ret = complete ? "(." : "(";
+        foreach (n; nexts) {
+            ret ~= text(n[0], ":", n[1]);
+        }
+        ret ~= ")";
+        return ret;
+    }
+}
+
+unittest {
+    auto t = TrieSet!string("Hello");
+    t.insert("Howdy");
+    t.insert("Hello there!");
+
+    assert ("Howdy" in t, text(t));
+    assert ("Hello" in t);
+    assert ("Hello there!" in t);
+    assert ("Hello the" !in t);
+    assert ("" !in t);
+    assert ("foo" !in t);
+}
+
+
+// assumes all range is sorted except last element, which is moved backwards
+void insertionSort_1(alias less="a < b", R)(R r) {
+    alias binaryFun!less f;
+
+    auto idx = r.length - 1;
+    while (idx > 0 && f(r[idx], r[idx-1])) {
+        swap(r[idx-1], r[idx]);
+        idx -= 1;
+    }
+}
+
+unittest {
+    auto a = [1,2,4,5,6,3];
+    a.insertionSort_1();
+    assert (a == [1,2,3,4,5,6], text(a));
+    auto b = [tuple(1,2),tuple(3,0),tuple(2,1)];
+    b.insertionSort_1!"a[0] < b[0]"();
+    assert (b == [tuple(1,2),tuple(2,1),tuple(3,0)], text(b));
+}
 
 
 struct StupidMap(alias f, R) {
@@ -154,4 +242,16 @@ struct StupidUniq(R) {
 
 auto stupid_uniq(R)(R r) {
     return StupidUniq!R(r);
+}
+
+
+
+string simpleCmp(string o, string[] ms...) {
+    string ret;
+    foreach (m; ms) {
+        ret ~= "if (" ~ m ~ " < " ~ o ~ "." ~ m ~") { return -1; }\n";
+        ret ~= "if (" ~ m ~ " > " ~ o ~ "." ~ m ~") { return 1; }\n";
+    }
+    ret ~= "return 0;";
+    return ret;
 }

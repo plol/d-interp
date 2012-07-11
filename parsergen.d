@@ -8,44 +8,33 @@ import std.datetime;
 
 import stuff;
 
-import lexer;
-
-struct StackItem {
-    bool terminal;
-    Token token;
+struct Rule(Tok) {
     string name;
-    string result;
+    Sym!Tok[] syms;
+    alias syms this;
 
-    Sym sym() @property {
-        Sym ret;
-        ret.terminal = terminal;
-        if (terminal) {
-            ret.tok = token.tok;
-        } else {
-            ret.name = name;
-        }
-        return ret;
-    }
-
-    this(Token tok) {
-        terminal = true;
-        token = tok;
-    }
-    this(string s, string res) {
-        terminal = false;
+    this(string s, Sym!Tok[] res) {
         name = s;
-        result = res;
+        syms = res;
     }
 
+    bool opEquals(Rule o) {
+        return name == o.name && syms == o.syms;
+    }
+    int opCmp(Rule o) { mixin (simpleCmp("o", "name", "syms")); }
     string toString() {
-        if (terminal) {
-            return text(token.tok);
-        } 
-        return name;
+        return text(name, " -> ", syms);
     }
 }
+Rule!Tok rule(Tok, Ts...)(Ts ts) {
+    Sym!Tok[] ret;
+    foreach (T t; ts[1..$]) {
+        ret ~= Sym!Tok(t);
+    }
+    return Rule!Tok(ts[0], ret);
+}
 
-struct Sym {
+private struct Sym(Tok) {
     bool terminal;
     union {
         Tok tok;
@@ -68,13 +57,9 @@ struct Sym {
     int opCmp(Sym o) {
         if (terminal != o.terminal) { return terminal - o.terminal; }
         if (terminal) {
-            if (tok < o.tok) return -1;
-            if (tok > o.tok) return 1;
-            return 0;
+            mixin (simpleCmp("o", "tok"));
         } else {
-            if (name < o.name) return -1;
-            if (name > o.name) return 1;
-            return 0;
+            mixin (simpleCmp("o", "name"));
         }
     }
     bool opEquals(Sym o) {
@@ -83,219 +68,351 @@ struct Sym {
     }
 }
 
-struct Rule {
-    string name;
-    Sym[] syms;
-    alias syms this;
 
-    this(string s, Sym[] res) {
-        name = s;
-        syms = res;
+template ParserGen(Token, Result, Tok, alias getTok,
+        alias grammar, alias s, alias eof
+        ) if (is(typeof(getTok(Token.init)) : Tok)) {
+
+    alias Result delegate(StackItem[]) ReduceFun;
+
+    struct Parser {
+        State[] states;
+
+        StackItem[] stack;
+        size_t current;
+
+        bool finished;
+        StackItem result() {
+            assert (finished);
+            return stack[0];
+        }
+
+        ReduceFun[string] reduction_table;
+
+        this(ReduceFun[string] rfs) {
+            populate_rules();
+            populate_firsts();
+
+            reduction_table = rfs;
+            states = [State(s)];
+            for (size_t i = 0; i < states.length; i += 1) {
+                //writeln("i = ", i);
+                foreach (set; states[i].items.groupByPostStart()) {
+                    //writeln(set);
+                    auto newstate = State(set.stupid_map!(a => a.next()).array());
+                    auto index = states.countUntil(newstate);
+                    if (index < 0) {
+                        states ~= newstate;
+                        index = states.length - 1;
+                    }
+                    auto start = set[0].post[0];
+                    states[i].transitions ~= Transition(start,
+                            cast(size_t)index);
+                }
+            }
+        }
+
+        void feed(Token token) {
+            Tok t = getTok(token);
+            foreach (item; states[current].reductions) {
+                if (item.lookahead.canFind(t)) {
+                    reduce(item);
+                    if (!finished) {
+                        feed(token);
+                    }
+                    return;
+                }
+            }
+            shift(token);
+        }
+
+        void reduce(Item item) {
+            auto to_remove = stack[$ - item.rule.length .. $];
+            if (item.rule.length > 1) {
+                writeln("reducing ", to_remove, " to ", item.orig);
+            }
+            assert (item.orig in reduction_table, item.orig ~ " not in table");
+            auto result = reduction_table[item.orig](to_remove);
+            stack = stack[0 .. $ - item.rule.length];
+            stack ~= StackItem(item.orig, result);
+            if (item.orig == s) {
+                finished = true;
+                writeln("finished!");
+            } else {
+                runNFA();
+            }
+        }
+
+        void shift(Token token) {
+            stack ~= StackItem(token);
+            //writeln("shift ", token);
+            runNFA();
+        }
+
+        void runNFA() {
+            //writeln("running nfa...");
+            current = 0;
+            foreach (si; stack) {
+                bool found;
+                foreach (transition; states[current].transitions) {
+                    if (transition.sym == si.sym) {
+                        current = transition.next;
+                        found = true;
+                        break;
+                    }
+                }
+                assert (found,
+                        text("NO TRANSITION FOUND!",
+                            " state = ", current,
+                            " symbol = ", si,
+                            " stack = ", stack
+                            ));
+            }
+        }
     }
 
-    bool opEquals(Rule o) {
-        return name == o.name && syms == o.syms;
+    struct StackItem {
+        bool terminal;
+        private union {
+            Token _token;
+            struct {
+                string _name;
+                Result _result;
+            }
+        }
+        ref Token token() @property { assert (terminal); return _token; }
+        ref string name() @property { assert (!terminal); return _name; }
+        ref Result result() @property { assert (!terminal); return _result; }
+
+        this(Token tok) {
+            terminal = true;
+            _token = tok;
+        }
+        this(string s, Result res) {
+            terminal = false;
+            _name = s;
+            _result = res;
+        }
+
+        string toString() {
+            return terminal ? text(getTok(_token)) :_name;
+        }
+        Sym!Tok sym() @property {
+            return terminal ? Sym!Tok(getTok(_token)) : Sym!Tok(_name);
+        }
     }
-    int opCmp(Rule o) {
-        if (name < o.name) return -1;
-        if (name > o.name) return 1;
-        if (syms < o.syms) return -1;
-        if (syms > o.syms) return 1;
-        return 0;
+
+
+
+
+    private struct Item {
+        Rule!Tok* rule;
+
+        Tok[] lookahead;
+        Sym!Tok[] _post;
+
+        string orig() @property { return rule.name; }
+        Sym!Tok[] post() @property { return _post; }
+
+        this(ref Rule!Tok r, Tok[] lah) {
+            rule = &r;
+            post = rule.syms;
+            lookahead = lah;
+        }
+
+        Item next() {
+            Item ret = this;
+            ret._post.popFront();
+            return ret;
+        }
+        Item without_lookahead() {
+            auto ret = this;
+            ret.lookahead = [];
+            return ret;
+        }
+
+        string toString() {
+            return format("%s -> %(%s %) * %(%s %) {%(%s %)}",
+                    orig, pre, post, lookahead);
+        }
+        bool opEquals(Item o) {
+            return r == o.r && rule == o.rule
+                && lookahead == o.lookahead;
+        }
+
+        int opCmp(Item o) { mixin (simpleCmp("o", "r", "rule", "lookahead")); }
     }
-    string toString() {
-        return text(name, " -> ", syms);
+
+    private struct Transition {
+        Sym!Tok sym;
+        size_t next;
+
+        string toString() { return text(sym, " -> ", next); }
+    }
+
+    private struct State {
+        Item[] items;
+        //size_t first_shift;
+        Item[] reductions;
+        Transition[] transitions;
+
+        this(string start) {
+            foreach (ref rule; get_rules(start)) { 
+                items ~= Item(rule, [eof]);
+            }
+            expand_items();
+        }
+        this(Item[] _items) {
+            items = _items;
+            expand_items();
+        }
+        private void expand_items() {
+            for (size_t i = 0; i < items.length; i += 1) {
+                auto item = items[i];
+                if (item.post.empty || item.post[0].terminal) {
+                    continue;
+                }
+                auto f = item.post[0];
+                foreach (ref rule; get_rules(f.name)) {
+                    auto lookahead = item.post.length > 1 
+                        ? get_firsts(item.post[1])
+                        : item.lookahead;
+                    auto it = Item(rule, lookahead);
+                    if (!items.canFind(it)) {
+                        items ~= it;
+                    }
+                }
+            }
+
+            merge_items();
+
+            static bool by_post(Item a, Item b) {
+                return a.post < b.post;
+            }
+            items.sort!by_post();
+
+            size_t first_shift;
+            while (first_shift < items.length
+                    && items[first_shift].post.empty) {
+                first_shift += 1;
+            }
+            reductions = items;
+            reductions.length = first_shift;
+        }
+
+        void merge_items() {
+            items.sort();
+            int j;
+            for (int i; i < items.length; i += 1) {
+                if (i == j) {
+                    continue;
+                }
+                if (items[i].without_lookahead == items[j].without_lookahead) {
+                    items[j].lookahead ~= items[i].lookahead;
+                    items[j].lookahead.make_set();
+                } else {
+                    j += 1;
+                    items[j] = items[i];
+                }
+            }
+            items.length = j + 1;
+            //items = items[0 .. j+1];
+        }
+
+        bool opEquals(State o) {
+            return items == o.items;
+        }
+        string toString() {
+            if (transitions.empty) {
+                return format(" %(%s\n %)", items);
+            } else {
+                return format(" %(%s\n %)\n    %(%s\n    %)",
+                        items, transitions);
+            }
+        }
+    }
+
+    Tok[][string] firsts;
+    Tok[Tok.max] term_firsts;
+
+    void populate_firsts() {
+        writeln("populating firsts");
+        foreach (rule; grammar) {
+            if (rule.name in firsts) {
+                continue;
+            }
+            firsts[rule.name] = generate_firsts(grammar, Sym!Tok(rule.name));
+        }
+        foreach (i; 0 .. Tok.max) {
+            term_firsts[i] = cast(Tok)i;
+        }
+    }
+
+    Tok[] get_firsts(Sym!Tok sym) {
+        if (sym.terminal) {
+            return (&term_firsts[sym.tok])[0 .. 1];
+        } else {
+            return firsts[sym.name];
+        }
+    }
+
+    Rule!Tok[][string] rules;
+
+    void populate_rules() {
+        foreach (rule; grammar) {
+            if (rule.name in rules) {
+                continue;
+            }
+            rules[rule.name] = .rules(grammar, rule.name);
+        }
+    }
+    Rule!Tok[] get_rules(string s) {
+        return rules[s];
+    }
+
+    auto generate_firsts(Rule, Sym)(Rule[] grammar, Sym sym) {
+        alias typeof(sym.tok) Tok;
+        static void firsts2(ref Tok[] ret, Rule[] grammar,
+                Sym sym, ref string[] seen) {
+            if (sym.terminal) {
+                ret ~= sym.tok;
+            } else {
+                if (seen.canFind(sym.name)) {
+                    return;
+                }
+                seen ~= sym.name;
+                foreach (ref rule; get_rules(sym.name)) {
+                    firsts2(ret, grammar, rule[0], seen);
+                }
+            }
+        }
+        Tok[] ret;
+        string[] seen;
+        firsts2(ret, grammar, sym, seen);
+        ret.length += 1;
+        ret.length -= 1;
+        return ret.make_set();
     }
 }
 
-Rule rule(Ts...)(Ts ts) {
-    Sym[] ret;
-    foreach (t; ts[1..$]) {
-        ret ~= Sym(t);
-    }
-    return Rule(ts[0], ret);
-}
-
-
-struct Item {
-    Rule rule;
-
-    size_t r;
-    Tok[] lookahead;
-
-    string orig() @property { return rule.name; }
-    Sym[] pre() @property { return rule[0..r]; }
-    Sym[] post() @property { return rule[r..$]; }
-
-    this(Rule r, Tok[] lah) {
-        rule = r;
-        lookahead = lah;
-    }
-
-    Item next() {
-        Item ret = this;
-        ret.r += 1;
-        return ret;
-    }
-    Item without_lookahead() {
-        auto ret = this;
-        ret.lookahead = [];
-        return ret;
-    }
-
-    string toString() {
-        return format("%s -> %(%s %) * %(%s %) {%(%s %)}",
-                orig, pre, post, lookahead);
-    }
-    bool opEquals(Item o) {
-        return rule == o.rule && r == o.r
-            && lookahead == o.lookahead;
-    }
-
-    int opCmp(Item o) {
-        if (rule < o.rule) return -1;
-        if (rule > o.rule) return 1;
-        if (r < o.r) return -1;
-        if (r > o.r) return 1;
-        if (lookahead < o.lookahead) return -1;
-        if (lookahead > o.lookahead) return 1;
-        return 0;
-    }
-}
-
-
-auto rules(Rule[] grammar, string name) {
+auto rules(Rule)(Rule[] grammar, string name) {
     assert (grammar.map!(a => a.name).canFind(name),
             "No rules with name " ~ name);
+    //return grammar.zip(repeat(name))
+    //    .filter!(a => a[0].name == a[1])()
+    //    .map!(a => a[0]);
     Rule[] ret;
     foreach (rule; grammar) {
         if (rule.name == name) {
             ret ~= rule;
         }
     }
+    ret.length += 1;
+    ret.length -= 1;
     return ret;
 }
 
-T[] make_set(T)(ref T[] ts) {
-    auto rest = ts.sort().uniq().copy(ts);
-    ts = ts[0 .. $ - rest.length];
-    return ts;
-}
-
-Tok[] firsts(Rule[] grammar, Sym sym) {
-    static void firsts2(ref Tok[] ret, Rule[] grammar, Sym sym, string[] seen) {
-        if (sym.terminal) {
-            ret ~= sym.tok;
-        } else {
-            if (seen.canFind(sym.name)) {
-                return;
-            }
-            seen ~= sym.name;
-            foreach (rule; grammar.rules(sym.name)) {
-                firsts2(ret, grammar, rule[0], seen);
-            }
-        }
-    }
-    Tok[] ret;
-    string[] seen;
-    firsts2(ret, grammar, sym, seen);
-    return ret.make_set();
-}
-
-struct Transition {
-    Sym sym;
-    size_t next;
-
-    string toString() { return text(sym, " -> ", next); }
-}
-
-struct State {
-    Item[] items;
-    size_t first_shift;
-    Transition[] transitions;
-
-    this(Rule[] grammar, string start, Tok eof) {
-        foreach (rule; grammar.rules(start)) {
-            items ~= Item(rule, [eof]);
-        }
-        expand_items(grammar);
-    }
-    this(Rule[] grammar, Item[] _items) {
-        items = _items;
-        expand_items(grammar);
-    }
-    private void expand_items(Rule[] grammar) {
-        for (size_t i = 0; i < items.length; i += 1) {
-            auto item = items[i];
-            if (item.post.empty || item.post[0].terminal) {
-                continue;
-            }
-            auto f = item.post[0];
-            foreach (rule; grammar.rules(f.name)) {
-                auto lookahead = item.post.length > 1 
-                    ? grammar.firsts(item.post[1])
-                    : item.lookahead;
-                auto it = Item(rule, lookahead);
-                if (!items.canFind(it)) {
-                    items ~= it;
-                }
-            }
-        }
-
-        merge_items();
-
-        static bool by_post(Item a, Item b) {
-            return a.post < b.post;
-        }
-        items.sort!by_post();
-
-
-        while (first_shift < items.length
-                && items[first_shift].post.empty) {
-            first_shift += 1;
-        }
-    }
-
-    void merge_items() {
-        items.sort();
-        int j;
-        for (int i; i < items.length; i += 1) {
-            if (i == j) {
-                continue;
-            }
-            if (items[i].without_lookahead == items[j].without_lookahead) {
-                items[j].lookahead ~= items[i].lookahead;
-                items[j].lookahead.make_set();
-            } else {
-                j += 1;
-                items[j] = items[i];
-            }
-        }
-        items = items[0 .. j+1];
-    }
-
-    Item[] reductions() @property {
-        return items[0 .. first_shift];
-    }
-    Item[] shifts() @property {
-        return items[first_shift .. $];
-    }
-
-
-    bool opEquals(State o) {
-        return items == o.items;
-    }
-    string toString() {
-        if (transitions.empty) {
-            return format(" %(%s\n %)", items);
-        } else {
-            return format(" %(%s\n %)\n    %(%s\n    %)", items, transitions);
-        }
-    }
-}
-
-
-struct SamePostStart {
+struct SamePostStart(Item) {
     Item[] items;
 
     Item[] _front;
@@ -310,123 +427,29 @@ struct SamePostStart {
             _front = [];
             return;
         }
-
         auto f = items[0].post[0];
-        //writeln("f == ", f);
 
         size_t i = 1;
         while (i < items.length && items[i].post[0] == f) {
             i += 1;
         }
-        _front = items[0 .. i];
-        items = items[i .. $];
+        _front = items;
+        front.length = i; //[0 .. i];
+        foreach (ffs; 0 .. i) {
+            items.popFront();
+        }
+        //items = items[i .. $];
     }
-
     bool empty() {
-        return front.empty && items.empty;
+        return _front.empty && items.empty;
     }
 }
 
-SamePostStart groupByPostStart(Item[] items) {
-    SamePostStart ret;
+SamePostStart!Item groupByPostStart(Item)(Item[] items) {
+    SamePostStart!Item ret;
     ret.items = items;
     ret.popFront();
     return ret;
 }
 
-alias string delegate(StackItem[]) RF;
 
-struct Parser {
-    State[] states;
-
-    StackItem[] stack;
-    size_t current;
-
-    bool finished;
-    StackItem result() {
-        assert (finished);
-        return stack[0];
-    }
-
-    string starting_name;
-
-    RF[string] reduction_table;
-
-    this(Rule[] grammar, string s, Tok eof, RF[string] rfs) {
-        reduction_table = rfs;
-        starting_name = s;
-        states = [State(grammar, s, eof)];
-        for (size_t i = 0; i < states.length; i += 1) {
-            //writeln("i = ", i);
-            foreach (set; states[i].items.groupByPostStart()) {
-                //writeln(set);
-                auto newstate = State(grammar, set.map!(a => a.next()).array());
-                auto index = states.indexOf(newstate);
-                if (index < 0) {
-                    states ~= newstate;
-                    index = states.length - 1;
-                }
-                auto start = set[0].post[0];
-                states[i].transitions ~= Transition(start, cast(size_t)index);
-            }
-        }
-    }
-
-    void feed(Token token) {
-        Tok t = token.tok;
-        foreach (item; states[current].reductions) {
-            if (item.lookahead.canFind(t)) {
-                reduce(item);
-                if (!finished) {
-                    feed(token);
-                }
-                return;
-            }
-        }
-        shift(token);
-    }
-
-    void reduce(Item item) {
-        auto to_remove = stack[$ - item.rule.length .. $];
-        if (item.rule.length > 1) {
-            writeln("reducing ", to_remove, " to ", item.orig);
-        }
-        assert (item.orig in reduction_table, item.orig ~ " not in table");
-        auto result = reduction_table[item.orig](to_remove);
-        stack = stack[0 .. $ - item.rule.length];
-        stack ~= StackItem(item.orig, result);
-        if (item.orig == starting_name) {
-            finished = true;
-            writeln("finished!");
-        } else {
-            runNFA();
-        }
-    }
-    
-    void shift(Token token) {
-        stack ~= StackItem(token);
-        //writeln("shift ", token);
-        runNFA();
-    }
-
-    void runNFA() {
-        //writeln("running nfa...");
-        current = 0;
-        foreach (si; stack) {
-            bool found;
-            foreach (transition; states[current].transitions) {
-                if (transition.sym == si.sym) {
-                    current = transition.next;
-                    found = true;
-                    break;
-                }
-            }
-            assert (found,
-                    text("NO TRANSITION FOUND!",
-                       " state = ", current,
-                       " symbol = ", si,
-                       " stack = ", stack
-                       ));
-        }
-    }
-}
