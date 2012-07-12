@@ -82,9 +82,13 @@ template ParserGen(Token, Result, Tok, alias getTok,
         size_t current;
 
         bool finished;
-        StackItem result() {
-            assert (finished);
-            return stack[0];
+        Result[] results;
+
+        void reset() {
+            finished = false;
+            results = [];
+            stack = [];
+            current = 0;
         }
 
         ReduceFun[string] reduction_table;
@@ -99,7 +103,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
                 //writeln("i = ", i);
                 foreach (set; states[i].items.groupByPostStart()) {
                     //writeln(set);
-                    auto newstate = State(set.stupid_map!(a => a.next()).array());
+                    auto newstate = State(set.map!(a => a.next()).array());
                     auto index = states.countUntil(newstate);
                     if (index < 0) {
                         states ~= newstate;
@@ -117,9 +121,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
             foreach (item; states[current].reductions) {
                 if (item.lookahead.canFind(t)) {
                     reduce(item);
-                    if (!finished) {
-                        feed(token);
-                    }
+                    feed(token);
                     return;
                 }
             }
@@ -128,24 +130,27 @@ template ParserGen(Token, Result, Tok, alias getTok,
 
         void reduce(Item item) {
             auto to_remove = stack[$ - item.rule.length .. $];
-            if (item.rule.length > 1) {
+            if (item.rule.length > 0) {
                 writeln("reducing ", to_remove, " to ", item.orig);
             }
             assert (item.orig in reduction_table, item.orig ~ " not in table");
             auto result = reduction_table[item.orig](to_remove);
             stack = stack[0 .. $ - item.rule.length];
             stack ~= StackItem(item.orig, result);
-            if (item.orig == s) {
-                finished = true;
-                writeln("finished!");
+            if (stack.length == 1 && item.orig == s) {
+                yield();
             } else {
                 runNFA();
             }
         }
 
         void shift(Token token) {
-            stack ~= StackItem(token);
             //writeln("shift ", token);
+            if (getTok(token) == eof) {
+                finished = true;
+                return;
+            }
+            stack ~= StackItem(token);
             runNFA();
         }
 
@@ -168,6 +173,12 @@ template ParserGen(Token, Result, Tok, alias getTok,
                             " stack = ", stack
                             ));
             }
+        }
+
+        void yield() {
+            results ~= stack[0].result;
+            stack = [];
+            current = 0;
         }
     }
 
@@ -209,10 +220,9 @@ template ParserGen(Token, Result, Tok, alias getTok,
         Rule!Tok* rule;
 
         Tok[] lookahead;
-        Sym!Tok[] _post;
+        Sym!Tok[] post;
 
         string orig() @property { return rule.name; }
-        Sym!Tok[] post() @property { return _post; }
 
         this(ref Rule!Tok r, Tok[] lah) {
             rule = &r;
@@ -222,7 +232,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
 
         Item next() {
             Item ret = this;
-            ret._post.popFront();
+            ret.post.popFront();
             return ret;
         }
         Item without_lookahead() {
@@ -232,15 +242,18 @@ template ParserGen(Token, Result, Tok, alias getTok,
         }
 
         string toString() {
-            return format("%s -> %(%s %) * %(%s %) {%(%s %)}",
-                    orig, pre, post, lookahead);
+            return format("%s -> * %(%s %) {%(%s %)}",
+                    orig, post, lookahead);
         }
         bool opEquals(Item o) {
-            return r == o.r && rule == o.rule
+            return rule == o.rule && post.length == o.post.length
                 && lookahead == o.lookahead;
         }
 
-        int opCmp(Item o) { mixin (simpleCmp("o", "r", "rule", "lookahead")); }
+        int opCmp(Item o) {
+            mixin (simpleCmp("o",
+                        "rule.name", "rule.syms", "post.length", "lookahead"));
+        }
     }
 
     private struct Transition {
@@ -258,7 +271,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
 
         this(string start) {
             foreach (ref rule; get_rules(start)) { 
-                items ~= Item(rule, [eof]);
+                items ~= Item(rule, [eof] ~ get_firsts(start));
             }
             expand_items();
         }
@@ -287,21 +300,31 @@ template ParserGen(Token, Result, Tok, alias getTok,
             merge_items();
 
             static bool by_post(Item a, Item b) {
-                return a.post < b.post;
+                if (a.post.empty) {
+                    return !b.post.empty;
+                }
+                if (b.post.empty) {
+                    return false;
+                }
+                return a.post[0] < b.post[0];
             }
             items.sort!by_post();
+
 
             size_t first_shift;
             while (first_shift < items.length
                     && items[first_shift].post.empty) {
                 first_shift += 1;
             }
+            //writefln("Items post-post-sort:\n%(%s\n%)\n\n", items);
+            //assert (0);
             reductions = items;
             reductions.length = first_shift;
         }
 
         void merge_items() {
             items.sort();
+            //writefln("Items pre-merge:\n%(%s\n%)\n\n", items);
             int j;
             for (int i; i < items.length; i += 1) {
                 if (i == j) {
@@ -315,8 +338,8 @@ template ParserGen(Token, Result, Tok, alias getTok,
                     items[j] = items[i];
                 }
             }
-            items.length = j + 1;
-            //items = items[0 .. j+1];
+            items = items[0 .. j+1];
+            //writefln("Items post-merge:\n%(%s\n%)\n\n", items);
         }
 
         bool opEquals(State o) {
@@ -348,11 +371,15 @@ template ParserGen(Token, Result, Tok, alias getTok,
         }
     }
 
+    Tok[] get_firsts(string s) {
+        return firsts[s];
+    }
+
     Tok[] get_firsts(Sym!Tok sym) {
         if (sym.terminal) {
             return (&term_firsts[sym.tok])[0 .. 1];
         } else {
-            return firsts[sym.name];
+            return get_firsts(sym.name);
         }
     }
 
@@ -433,12 +460,8 @@ struct SamePostStart(Item) {
         while (i < items.length && items[i].post[0] == f) {
             i += 1;
         }
-        _front = items;
-        front.length = i; //[0 .. i];
-        foreach (ffs; 0 .. i) {
-            items.popFront();
-        }
-        //items = items[i .. $];
+        _front = items[0 .. i];
+        items = items[i .. $];
     }
     bool empty() {
         return _front.empty && items.empty;

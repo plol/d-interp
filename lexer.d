@@ -418,16 +418,10 @@ template RegexEscape(string s) {
 
 enum identifyerre = r"[\p{Alphabetic}\p{Mark}\p{Connector_Punctuation}]\w*";
 
-enum operatorre = [staticMap!(RegexEscape, strings!operators)
-    ].sort!"a.length > b.length"().join("|");
+string operatorre; // CTFE bug (can't sort at compile time with -inline,
+                   //             or something like that )
 
 enum stringre = `"([^"\\]|\\.)*"`;
-
-// FloatLiteral = Float | Float Suffix
-// Float = DecimalFloat | HexFloat
-// DecimalFloat = LeadingDecimal "."
-//              | LeadingDecimal "." DecimalDigits
-//              | 
 
 enum decexp_q = `([eE][+-]?[_\d]+)?`;
 enum hexexp_q = `([pP][+-]?[_\d]+)?`;
@@ -442,17 +436,22 @@ enum numberre = `\.\d[\d_]*` ~ decexp_q ~ fsuf_q
         ;
 
 enum charre = r"'([^'\\]|\\.[^']*)'";
-enum finalre = "^(" ~ identifyerre
+
+string finalre; // CTFE bug again
+
+typeof(regex("")) token_re, number_re, ident_re, char_re;
+Tok[string] lookup_table;
+
+static this() {
+    operatorre = [staticMap!(RegexEscape, strings!operators)
+        ].sort!"a.length > b.length"().join("|");
+    finalre = "^(" ~ identifyerre
               ~ "|" ~ numberre
               ~ "|" ~ charre
               ~ "|" ~ operatorre
               ~ ")";
 
 
-typeof(regex("")) token_re, number_re, ident_re, char_re;
-Tok[string] lookup_table;
-
-static this() {
     token_re = regex(finalre);
     ident_re = regex("^("~identifyerre~")");
     number_re = regex("^("~numberre~")");
@@ -726,5 +725,5 @@ unittest {
             text(Lexer(input)));
     assert (to!real("123456.78e90") == 12_34_56.78e90L);
     assert (to!double("0x1.FFFFFFFFFFFFFp1023") == 0x1.FFFFFFFFFFFFFp1023);
-
 }
+

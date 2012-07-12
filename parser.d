@@ -11,33 +11,10 @@ import lexer;
 
 import parsergen;
 
-//Sym[][] gram = [
-//    [Sym("S"), Sym("A"), Sym("B")],
-//    [Sym("A"), Sym(Tok.a), Sym("A"), Sym(Tok.b)],
-//    [Sym("A"), Sym(Tok.a)],
-//    [Sym("B"), Sym(Tok.d)],
-//    ];
-//
-//Sym[][] grammar2 = [
-//    [Sym("S"), Sym("A")],
-//    [Sym("S"), Sym("C")],
-//    [Sym("A"), Sym("B"), Sym(Tok.a)],
-//    [Sym("C"), Sym("B"), Sym(Tok.c)],
-//    [Sym("B"), Sym("D"), Sym(Tok.b)],
-//    [Sym("D"), Sym(Tok.d)],
-//    ];
-//
-//Sym[][] grammar3 = [
-//    [Sym("S"), Sym(Tok.a)],
-//    [Sym("S"), Sym("S"), Sym(Tok.a)],
-//    ];
 
 Tok getTok(Token t) { return t.tok; }
 
-
 Rule!Tok[] grammar = [
-    rule!Tok("S", "StmtList"),
-
     rule!Tok("StmtList", "Stmt"),
     rule!Tok("StmtList", "StmtList", "Stmt"),
 
@@ -121,17 +98,19 @@ Rule!Tok[] grammar = [
     rule!Tok("BinOp", Tok.bin_op),
     ];
 
-alias ParserGen!(Token, string, Tok, getTok, grammar, "S", Tok.eof) P;
+alias ParserGen!(Token, string, Tok, getTok, grammar, "Stmt", Tok.eof) P;
+
+string siff(P.StackItem a) {
+    return a.terminal ? "'" ~ a.token.str ~ "'" : a.result;
+}
 
 void main() {
 
     string delegate(P.StackItem[])[string] reduction_table;
 
 
-    string delegate(P.StackItem) sif =
-        a => a.terminal ? "'" ~ a.token.str ~ "'" : a.result;
     string delegate(P.StackItem[]) rf =
-        ts => ts.length == 1 ? sif(ts[0]) : "(" ~ ts.map!sif.join(" ") ~ ")";
+        ts => ts.length == 1 ? siff(ts[0]) : "("~ts.map!siff().join(" ")~")";
 
     reduction_table["S"]            = rf;
     reduction_table["StmtList"]     = rf;
@@ -172,14 +151,23 @@ void main() {
         f.writeln("state ", i, ":\n", state);
     }
 
-    auto input = "
-        1;
-    ";
 
-    foreach (tok; Lexer(input)) {
-        p.feed(tok);
+    while (true) {
+        write("D > ");
+        auto input = readln();
+
+        auto lx = Lexer(input);
+        
+        if (lx.empty) continue;
+
+        writeln(lx);
+
+        foreach (tok; lx) {
+            p.feed(tok);
+        }
+        p.feed(Token(-1, "", Tok.eof));
+        writeln(p.finished, " ? ", p.results);
+        p.reset();
     }
-    p.feed(Token(-1, "", Tok.eof));
-    writeln(p.result.result);
 }
 
