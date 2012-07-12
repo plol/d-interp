@@ -133,8 +133,14 @@ template ParserGen(Token, Result, Tok, alias getTok,
             if (item.rule.length > 0) {
                 writeln("reducing ", to_remove, " to ", item.orig);
             }
-            assert (item.orig in reduction_table, item.orig ~ " not in table");
-            auto result = reduction_table[item.orig](to_remove);
+            Result result;
+            if (item.orig in reduction_table) {
+                result = reduction_table[item.orig](to_remove);
+            } else if ("default_reduction" in reduction_table) {
+                result = reduction_table["default_reduction"](to_remove);
+            } else {
+                assert (0, item.orig ~ " not in table and no default");
+            }
             stack = stack[0 .. $ - item.rule.length];
             stack ~= StackItem(item.orig, result);
             if (stack.length == 1 && item.orig == s) {

@@ -75,11 +75,14 @@ Val interpret_assignment(IR ir, Env env) {
 }
 
 Val interpret_application(IR ir, Env env) {
-    Val interpret_in_env(IR o) {
-        return interpret(o, env);
-    }
+    //Val interpret_in_env(IR o) {
+    //    return interpret(o, env);
+    //}
     Val operator = interpret(ir.application.operator, env);
-    Val[] operands = map!interpret_in_env(ir.application.operands).array();
+    Val[] operands;// = map!interpret_in_env(ir.application.operands).array();
+    foreach (op; ir.application.operands) {
+        operands ~= interpret(op, env);
+    }
 
     Val res;
     if (ir.application.operator.ti.type == TI.Type.builtin_delegate) {

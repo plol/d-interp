@@ -53,6 +53,9 @@ struct Val {
     this(bool b) { bool_val = b; }
     this(int b) { int_val = b; }
     this(ulong u) { ulong_val = u; }
+    this(float f) { float_val = f; }
+    this(double f) { double_val = f; }
+    this(real f) { real_val = f; }
 
     string toString() const {
         return "Val()";

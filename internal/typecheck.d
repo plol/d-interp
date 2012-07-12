@@ -93,11 +93,14 @@ TI resolve_application(IR ir, CTEnv env) {
     // we assume a unary overload set here,
     // so direct type checking :-)
 
-    TI resolve_in_env(IR ir) {
-        return resolve(ir, env);
-    }
+    //TI resolve_in_env(IR ir) {
+    //    return resolve(ir, env);
+    //}
 
-    auto arg_types = ir.application.operands.map!resolve_in_env().array();
+    TI[] arg_types; // = ir.application.operands.map!resolve_in_env().array();
+    foreach (a; ir.application.operands) {
+        arg_types ~= resolve(a, env);
+    }
 
     ir.application.operator.resolve(env);
 

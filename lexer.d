@@ -193,12 +193,13 @@ enum Tok {
 
 struct Token {
     int line;
-    string str;
+    string file;
+
     Tok tok;
-    alias tok this;
+    string str;
 
     bool opEquals(Token o) {
-        return line == o.line && str == o.str && tok == o.tok;
+        return tok == o.tok && line == o.line && file == o.file && str == o.str;
     }
 }
 
@@ -466,6 +467,7 @@ struct Lexer {
     Token _front;
     string input;
     int line;
+    string file;
 
     this() @disable;
 
@@ -534,8 +536,8 @@ struct Lexer {
         auto i2 = input;
 
         void finalize_token() {
-            _front = Token(starting_line,
-                    input[0 .. $ - i2.length], Tok.string_);
+            _front = Token(starting_line, file, Tok.string_,
+                    input[0 .. $ - i2.length]);
             input = i2;
         }
 
@@ -629,7 +631,7 @@ struct Lexer {
         skipNonTokens();
 
         if (input.empty) {
-            _front = Token(line, "", Tok.eof);
+            _front = Token(line, file, Tok.eof, "");
             return;
         }
 
@@ -665,7 +667,7 @@ struct Lexer {
         } else {
             assert (0);
         }
-        _front = Token(line, cap, tok);
+        _front = Token(line, file, tok, cap);
     }
     bool empty() @property {
         return _front.tok == Tok.eof && input.empty;
@@ -677,24 +679,24 @@ unittest {
     
     input = "_1";
     assert (equal(Lexer(input), [
-                Token(1, "_1", Tok.id),
+                Token(1, "", Tok.id, "_1"),
                 ]),
             text(Lexer(input)));
     input = "_a";
     assert (equal(Lexer(input), [
-                Token(1, "_a", Tok.id),
+                Token(1, "", Tok.id, "_a"),
                 ]),
             text(Lexer(input)));
 
 
     input = "q{{asdf}} \nq\"/asdf/\" \n x\"1234\" \n \"as\\\"d\nf\" a _1";
     assert (equal(Lexer(input), [
-                Token(1, "q{{asdf}}", Tok.string_),
-                Token(2, "q\"/asdf/\"", Tok.string_),
-                Token(3, "x\"1234\"", Tok.string_),
-                Token(4, "\"as\\\"d\nf\"", Tok.string_),
-                Token(5, "a", Tok.id),
-                Token(5, "_1", Tok.id),
+                Token(1, "", Tok.string_, "q{{asdf}}"),
+                Token(2, "", Tok.string_, "q\"/asdf/\""),
+                Token(3, "", Tok.string_, "x\"1234\""),
+                Token(4, "", Tok.string_, "\"as\\\"d\nf\""),
+                Token(5, "", Tok.id, "a"),
+                Token(5, "", Tok.id, "_1"),
                 ]),
             text(Lexer(input)));
 
@@ -704,9 +706,9 @@ unittest {
         1_2_3_4_5_6_.5e-6_   // 123456.5e-6";
 
     assert (equal(Lexer(input), [
-                Token(1, "123_456.567_8", Tok.num),
-                Token(2, "1_2_3_4_5_6_.5_6_7_8", Tok.num),
-                Token(3, "1_2_3_4_5_6_.5e-6_", Tok.num),
+                Token(1, "", Tok.num, "123_456.567_8"),
+                Token(2, "", Tok.num, "1_2_3_4_5_6_.5_6_7_8"),
+                Token(3, "", Tok.num, "1_2_3_4_5_6_.5e-6_"),
                 ]),
             text(Lexer(input)));
 
@@ -718,9 +720,9 @@ unittest {
         ";
 
     assert (equal(Lexer(input), [
-                Token(2, "0x1.FFFFFFFFFFFFFp1023", Tok.num),
-                Token(3, "0x1p-52", Tok.num),
-                Token(4, "1.175494351e-38F", Tok.num),
+                Token(2, "", Tok.num, "0x1.FFFFFFFFFFFFFp1023"),
+                Token(3, "", Tok.num, "0x1p-52"),
+                Token(4, "", Tok.num, "1.175494351e-38F"),
                 ]),
             text(Lexer(input)));
     assert (to!real("123456.78e90") == 12_34_56.78e90L);

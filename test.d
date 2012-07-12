@@ -1,7 +1,11 @@
 import std.stdio, std.traits, std.conv;
 
+import std.datetime, std.array;
+
 import internal.ir, internal.env, internal.interp, internal.val;
 import internal.typeinfo, internal.ctenv, internal.typecheck;
+
+import lexer, parser;
 
 //        declare(int_int_bool_delegate, "$lt_int", Val((Val[] vars) {
 //                    return Val(vars[0].int_val < vars[1].int_val);
@@ -55,48 +59,6 @@ void* cast_int_int_aa_void_p(int[int] aa) {
 int* cast_void_p_int_p(void* p) {
     return cast(int*)p;
 }
-
-
-
-IR call(IR f, IR[] args...) {
-    return new IR(IR.Type.application, f, args.dup);
-}
-
-IR var(string n) {
-    return new IR(IR.Type.variable, n);
-}
-IR fun(string n) {
-    return new IR(IR.Type.function_, n);
-}
-IR id(string n) {
-    return new IR(IR.Type.id, n);
-}
-IR deref(IR ir) {
-    return new IR(IR.Type.deref, ir);
-}
-IR set(IR lhs, IR rhs) {
-    return new IR(IR.Type.assignment, lhs, rhs);
-}
-
-IR constant(T)(CTEnv ct_env, T t) {
-    return new IR(IR.Type.constant, ct_env.get_ti!T(), Val(t));
-}
-IR seq(IR[] ss...) {
-    return new IR(IR.Type.sequence, ss.dup);
-}
-
-IR addressof(IR ir) {
-    return new IR(IR.Type.addressof, ir);
-}
-
-IR typeid_(IR ir) {
-    return new IR(IR.Type.typeid_, ir);
-}
-
-IR while_(IR cond, IR body_) {
-    return new IR(IR.Type.while_, cond, body_);
-}
-
 
 void main() {
     auto ct_env = new CTEnv();
@@ -162,43 +124,82 @@ void main() {
     // *cast(int*)($aaGetX(cast(void*)myaa, typeid(mykey), 4u, &mykey)) = 5;
     // which is what will be generated hopefully
 
-    IR lookup_lv(string aa_name, string var_name) {
-        return call(id("$aaGetX"),
-                call(id("$cast_int_int_aa_p_void_p"),
-                    addressof(id(aa_name))),
-                typeid_(id(var_name)),
-                constant(ct_env, int.sizeof),
-                addressof(id(var_name)));
+    //IR lookup_lv(string aa_name, string var_name) {
+    //    return call(id("$aaGetX"),
+    //            call(id("$cast_int_int_aa_p_void_p"),
+    //                addressof(id(aa_name))),
+    //            typeid_(id(var_name)),
+    //            constant(ct_env, int.sizeof),
+    //            addressof(id(var_name)));
+    //}
+    //IR lookup_rv(string aa_name, string var_name) {
+    //    return call(id("$aaGetRvalueX"),
+    //            call(id("$cast_int_int_aa_void_p"),
+    //                id(aa_name)),
+    //            typeid_(id(var_name)),
+    //            constant(ct_env, int.sizeof),
+    //            addressof(id(var_name)));
+    //}
+
+    //auto ir = seq(
+    //        set(id("mykey"), constant(ct_env, 2)),
+    //        set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
+    //            constant(ct_env, 5)),
+
+    //        while_(call(id("$lt_int"),
+    //                deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
+    //                constant(ct_env, 10)),
+    //            seq(
+    //                set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
+    //                    call(id("$add_int"),
+    //                        deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
+    //                        constant(ct_env, 1)))),
+    //            ),
+    //        );
+    //resolve(ir, ct_env);
+
+
+    writeln("HI");
+    auto sw = StopWatch();
+    sw.start();
+    auto p = P.Parser(reduction_table);
+    sw.stop();
+    writeln("TOOK ", sw.peek().hnsecs / 10_000.0, " ms!",
+           " (", p.states.length, ")");
+
+    auto f = File("states.txt", "w");
+    foreach (i, state; p.states) {
+        f.writeln("state ", i, ":\n", state);
     }
-    IR lookup_rv(string aa_name, string var_name) {
-        return call(id("$aaGetRvalueX"),
-                call(id("$cast_int_int_aa_void_p"),
-                    id(aa_name)),
-                typeid_(id(var_name)),
-                constant(ct_env, int.sizeof),
-                addressof(id(var_name)));
+
+
+    while (true) {
+        write("D > ");
+        auto input = readln();
+
+        if (input.empty) {
+            writeln();
+            break;
+        }
+
+        auto lx = Lexer(input);
+        
+        if (lx.empty) continue;
+
+        writeln(lx);
+
+        foreach (tok; lx) {
+            p.feed(tok);
+        }
+        p.feed(Token(-1, "", Tok.eof));
+        writeln(p.finished, " ? ", p.results);
+
+        foreach (r; p.results) {
+            auto ir = r.toIR(ct_env);
+            resolve(ir, ct_env);
+            auto env = ct_env.get_runtime_env();
+            writeln(interpret(ir, env).toString(ir.ti));
+        }
+        p.reset();
     }
-
-    auto ir = seq(
-            set(id("mykey"), constant(ct_env, 2)),
-            set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
-                constant(ct_env, 5)),
-
-            while_(call(id("$lt_int"),
-                    deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
-                    constant(ct_env, 10)),
-                seq(
-                    set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
-                        call(id("$add_int"),
-                            deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
-                            constant(ct_env, 1)))),
-                ),
-            );
-    resolve(ir, ct_env);
-
-    auto env = ct_env.get_runtime_env();
-
-    writeln(interpret(ir, env).toString(ct_env.get_ti!int()));
-    writeln(env.vars["myaa"].toString(ct_env.get_ti!(int[int])()));
-    writeln(bro);
 }

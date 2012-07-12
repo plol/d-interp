@@ -6,6 +6,7 @@ import std.stdio, std.conv, std.typecons, std.exception;
 import std.algorithm, std.range, std.array, std.typetuple, std.regex;
 import std.datetime;
 
+import internal.ast;
 import stuff;
 import lexer;
 
@@ -98,76 +99,68 @@ Rule!Tok[] grammar = [
     rule!Tok("BinOp", Tok.bin_op),
     ];
 
-alias ParserGen!(Token, string, Tok, getTok, grammar, "Stmt", Tok.eof) P;
+alias ParserGen!(Token, Ast, Tok, getTok, grammar, "Stmt", Tok.eof) P;
 
-string siff(P.StackItem a) {
-    return a.terminal ? "'" ~ a.token.str ~ "'" : a.result;
+Ast siff(P.StackItem a) {
+    return a.terminal
+        ? ast(a.token)
+        : a.result;
 }
+Ast delegate(P.StackItem[])[string] reduction_table;
 
-void main() {
+static this() {
+    reduction_table["default_reduction"] = (P.StackItem[] ts) {
+        return ts.length == 1
+            ? siff(ts[0])
+            : ast(Ast.Type.sequence, ts.map!siff().array());
+    };
 
-    string delegate(P.StackItem[])[string] reduction_table;
-
-
-    string delegate(P.StackItem[]) rf =
-        ts => ts.length == 1 ? siff(ts[0]) : "("~ts.map!siff().join(" ")~")";
-
-    reduction_table["S"]            = rf;
-    reduction_table["StmtList"]     = rf;
-    reduction_table["Stmt"]         = rf;
-    reduction_table["While"]        = rf;
-    reduction_table["Foreach"]        = rf;
-    reduction_table["If"]        = rf;
-    reduction_table["ForeachTypeList"]        = rf;
-    reduction_table["ForeachType"]        = rf;
-    reduction_table["CurlStmtList"]        = rf;
-    reduction_table["Expr"]        = rf;
-    reduction_table["CommaExpr"] = rf;
-    reduction_table["AssignExpr"] = rf;
-    reduction_table["CondExpr"] = rf;
-    reduction_table["OpExpr"] = rf;
-    reduction_table["PrimaryExpr"] = rf;
-    reduction_table["PrimaryExprT"] = rf;
-    reduction_table["ParExpr"] = rf;
-    reduction_table["Prefix"] = rf;
-    reduction_table["Postfix"] = rf;
-    reduction_table["ArgList"] = rf;
-    reduction_table["Index"] = rf;
-    reduction_table["Slice"] = rf;
-    reduction_table["ComExprList"] = rf;
-    reduction_table["OpSet"] = rf;
-    reduction_table["BinOp"] = rf;
-
-    writeln("HI");
-    auto sw = StopWatch();
-    sw.start();
-    auto p = P.Parser(reduction_table);
-    sw.stop();
-    writeln("TOOK ", sw.peek().hnsecs / 10_000.0, " ms!",
-           " (", p.states.length, ")");
-
-    auto f = File("states.txt", "w");
-    foreach (i, state; p.states) {
-        f.writeln("state ", i, ":\n", state);
-    }
-
-
-    while (true) {
-        write("D > ");
-        auto input = readln();
-
-        auto lx = Lexer(input);
-        
-        if (lx.empty) continue;
-
-        writeln(lx);
-
-        foreach (tok; lx) {
-            p.feed(tok);
+    reduction_table["StmtList"] = (P.StackItem[] ts) {
+        if (ts.length == 2) {
+            ts[0].result.sequence ~= ts[1].result;
+            return ts[0].result;
         }
-        p.feed(Token(-1, "", Tok.eof));
-        writeln(p.finished, " ? ", p.results);
-        p.reset();
-    }
+        return ast(Ast.Type.sequence, [ts[0].result]);
+    };
+    reduction_table["Stmt"] = (P.StackItem[] ts) {
+        if (ts.length == 2) {
+            return ast(Ast.Type.statement, ts[0].result);
+        }
+        return ts[0].result;
+    };
+    reduction_table["While"] = (P.StackItem[] ts) {
+        return ast(Ast.Type.while_, ts[1].result, ts[2].result);
+    };
+    reduction_table["CurlStmtList"] = (P.StackItem[] ts) {
+        if (ts.length == 3) {
+            return ts[1].result;
+        } else {
+            assert (0);
+        }
+    };
+    reduction_table["ParExpr"] = (P.StackItem[] ts) {
+        return ts[1].result;
+    };
+    reduction_table["PrimaryExpr"] = (P.StackItem[] ts) {
+        if (!ts[0].terminal) {
+            return ts[0].result;
+        }
+        return ast(ts[0].token);
+    };
+    reduction_table["AssignExpr"] = (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ts[0].result;
+        }
+        assert (ts.length == 3);
+        writeln("assuming assignexpr to be = not += etc");
+        return ast(Ast.Type.assignment, ts[0].result, ts[2].result);
+    };
+    reduction_table["OpExpr"] = (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ts[0].result;
+        }
+        assert (ts.length == 3);
+        return ast(Ast.Type.binop, ts[0].result, ts[1].result, ts[2].result);
+    };
 }
 

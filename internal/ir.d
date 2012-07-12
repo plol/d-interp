@@ -108,7 +108,7 @@ final class IR {
     this(Type t, IR ir1, IR ir2) {
         type = t;
         if (t == Type.while_) {
-            while_ = While(ir1, ir2);
+            data.while_ = While(ir1, ir2);
         } else if (t == Type.assignment) {
             bin = Bin(ir1, ir2);
             ti = ir2.ti;
@@ -119,7 +119,7 @@ final class IR {
     this(Type t, IR ir1, IR ir2, IR ir3) {
         type = t;
         if (t == Type.if_) {
-            if_ = If(ir1, ir2, ir3);
+            data.if_ = If(ir1, ir2, ir3);
         } else {
             assert (0);
         }
@@ -154,3 +154,44 @@ final class IR {
     }
 }
 
+IR call(IR f, IR[] args...) {
+    return new IR(IR.Type.application, f, args.dup);
+}
+
+IR var(string n) {
+    return new IR(IR.Type.variable, n);
+}
+IR fun(string n) {
+    return new IR(IR.Type.function_, n);
+}
+IR id(string n) {
+    return new IR(IR.Type.id, n);
+}
+IR deref(IR ir) {
+    return new IR(IR.Type.deref, ir);
+}
+IR set(IR lhs, IR rhs) {
+    return new IR(IR.Type.assignment, lhs, rhs);
+}
+
+IR constant(T)(CTEnv ct_env, T t) {
+    return new IR(IR.Type.constant, ct_env.get_ti!T(), Val(t));
+}
+IR seq(IR[] ss...) {
+    return new IR(IR.Type.sequence, ss.dup);
+}
+
+IR addressof(IR ir) {
+    return new IR(IR.Type.addressof, ir);
+}
+
+IR typeid_(IR ir) {
+    return new IR(IR.Type.typeid_, ir);
+}
+
+IR if_(IR if_part, IR then_part, IR else_part) {
+    return new IR(IR.Type.if_, if_part, then_part, else_part);
+}
+IR while_(IR cond, IR body_) {
+    return new IR(IR.Type.while_, cond, body_);
+}
