@@ -12,6 +12,16 @@ import stuff;
 
 alias stuff.format format;
 
+struct Operator {
+    enum Type {
+        prefix,
+        postfix,
+        binary,
+    }
+    Type type;
+    string ast;
+}
+
 final class Ast {
     static enum Type {
         if_,
@@ -42,6 +52,8 @@ final class Ast {
         addressof,
         deref,
 
+        member_lookup,
+
         bool_,
         dchar_,
         int_,
@@ -59,6 +71,8 @@ final class Ast {
         assocarray,
 
         binop,
+        postfix,
+        prefix,
 
         other,
     }
@@ -68,6 +82,14 @@ final class Ast {
     }
     static struct If {
         Ast if_part, then_part, else_part;
+    }
+    static struct Binop {
+        string op;
+        Ast lhs, rhs;
+    }
+    static struct Lookup {
+        Ast lhs;
+        string rhs;
     }
     static struct Bin {
         Ast lhs, rhs;
@@ -89,11 +111,19 @@ final class Ast {
         While while_;
         If if_;
         Bin bin;
+        Binop binop;
+        Lookup lookup;
+
+        Operator operator;
+        struct {
+            Operator[] operators;
+            Ast[] operands;
+        }
     }
 
     Type type;
-    int line;
-    string file;
+    int line = -1;
+    string file = "no file";
     PossibleValues values;
     alias values this;
 
@@ -101,8 +131,6 @@ final class Ast {
         line = t.line;
         file = t.file;
         if (t.tok == Tok.num) {
-            writeln("t == ", t);
-            writeln("t.str == ", tuple(t.str));
             parse_num(t.str);
         } else if (t.tok == Tok.string_) {
             parse_string(t.str);
@@ -115,6 +143,10 @@ final class Ast {
         }
     }
     this(Type t, Ast[] w) {
+        if (!w.empty) {
+            file = w[0].file;
+            line = w[0].line;
+        }
         type = t;
         if (t == Type.sequence) {
             values.sequence = w;
@@ -124,14 +156,20 @@ final class Ast {
     }
 
     this(Type t, Ast n) {
+        file = n.file;
+        line = n.line;
         type = t;
         if (t == Type.statement) {
             next = n;
+        } else if (t == Type.binop) {
+            str = n.str;
         } else {
             assert (0);
         }
     }
     this(Type t, Ast n1, Ast n2) {
+        file = n1.file;
+        line = n1.line;
         type = t;
         if (t == Type.while_) {
             values.while_ = While(n1, n2);
@@ -143,10 +181,24 @@ final class Ast {
             assert (0);
         }
     }
-    this(Type t, Ast n1, Ast n2, Ast n3) {
+
+    this(Type t, string s, Ast n1, Ast n2) {
+        file = n1.file;
+        line = n1.line;
         type = t;
         if (t == Type.binop) {
-            values.bin = Bin(n1, n3);
+            values.binop = Binop(s, n1, n2);
+        } else {
+            assert (0);
+        }
+    }
+
+    this(Type t, Ast n1, string s) {
+        file = n1.file;
+        line = n1.line;
+        type = t;
+        if (t == Type.member_lookup) {
+            values.lookup = Lookup(n1, s);
         }
     }
 
@@ -246,7 +298,6 @@ final class Ast {
 
         bool had_suffix = true;
         while (had_suffix) {
-            writeln("s == ", tuple(s));
             switch (s.back) {
                 default: had_suffix = false; break;
                 case 'L': L = true; s.popBack(); break;
@@ -310,9 +361,6 @@ final class Ast {
                         values.while_.condition, values.while_.body_);
             case Type.assignment:
                 return format("(%s = %s)", values.bin.lhs, values.bin.rhs);
-            case Type.binop:
-                writeln("Assuming binop is plus...");
-                return format("(%s + %s)", values.bin.lhs, values.bin.rhs);
         }
     }
 
@@ -353,9 +401,6 @@ final class Ast {
             case Type.assignment: return ir.set(
                                           bin.lhs.toIR(env),
                                           bin.rhs.toIR(env));
-            case Type.binop: return ir.call(ir.id("$add_int"),
-                                          bin.lhs.toIR(env),
-                                          bin.rhs.toIR(env));
         }
     }
 }
@@ -363,5 +408,4 @@ final class Ast {
 Ast ast(T...)(T t) {
     return new Ast(t);
 }
-
 

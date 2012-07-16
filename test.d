@@ -172,6 +172,7 @@ void main() {
         f.writeln("state ", i, ":\n", state);
     }
 
+    auto env = ct_env.get_runtime_env();
 
     while (true) {
         write("D > ");
@@ -197,7 +198,6 @@ void main() {
         foreach (r; p.results) {
             auto ir = r.toIR(ct_env);
             resolve(ir, ct_env);
-            auto env = ct_env.get_runtime_env();
             writeln(interpret(ir, env).toString(ir.ti));
         }
         p.reset();

@@ -100,12 +100,12 @@ template ParserGen(Token, Result, Tok, alias getTok,
             reduction_table = rfs;
             states = [State(s)];
             for (size_t i = 0; i < states.length; i += 1) {
-                //writeln("i = ", i);
+                writeln("i = ", i);
                 foreach (set; states[i].items.groupByPostStart()) {
-                    //writeln(set);
                     auto newstate = State(set.map!(a => a.next()).array());
                     auto index = states.countUntil(newstate);
                     if (index < 0) {
+                        writeln(set);
                         states ~= newstate;
                         index = states.length - 1;
                     }
