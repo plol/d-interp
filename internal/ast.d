@@ -337,7 +337,7 @@ final class Ast {
         switch (type) {
             case Type.other:
                 return str;
-            default: assert (0);
+            default: assert (0, text(type));
 
             case Type.real_: case Type.float_: case Type.double_:
                 return to!string(real_val);
@@ -361,6 +361,9 @@ final class Ast {
                         values.while_.condition, values.while_.body_);
             case Type.assignment:
                 return format("(%s = %s)", values.bin.lhs, values.bin.rhs);
+            case Type.binop:
+                return format("(%s %s %s)",
+                        values.binop.lhs, values.binop.op, values.binop.rhs);
         }
     }
 
@@ -401,7 +404,22 @@ final class Ast {
             case Type.assignment: return ir.set(
                                           bin.lhs.toIR(env),
                                           bin.rhs.toIR(env));
+            case Type.binop: return ir.call(
+                                     ir.id(opfuncname(binop.op)),
+                                     binop.lhs.toIR(env),
+                                     binop.rhs.toIR(env));
         }
+    }
+}
+
+string opfuncname(string op) {
+    switch (op) {
+        case "+": return "$add";
+        case "-": return "$sub";
+        case "*": return "$mul";
+        case "/": return "$div";
+        case "<": return "$lt";
+        default: assert (0, "no opfuncname for " ~ op);
     }
 }
 

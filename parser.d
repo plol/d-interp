@@ -124,7 +124,7 @@ Rule!Tok[] grammar = [
     rule!Tok("UnaryExpr", "Prefix", "UnaryExpr"),
 
     rule!Tok("PowExpr", "PostfixExpr"),
-    rule!Tok("PowExpr", "PowExpr", Tok.pow, "PostfixExpr"),
+    rule!Tok("PowExpr", "PostfixExpr", Tok.pow, "PowExpr"),
 
     rule!Tok("PostfixExpr", "PrimaryExpr"),
     rule!Tok("PostfixExpr", "PostfixExpr", Tok.dot, Tok.id),
@@ -262,8 +262,25 @@ static this() {
                 ts[0].result, ts[2].result);
     };
 
-    reduction_table["Expr"] = reduce_binop; //comma
-    reduction_table["AssignExpr"] = reduce_binop;
+    reduction_table["Expr"] = delegate (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ts[0].result;
+        }
+        assert (0, "NO COMMA EXPR FOR YOU!");
+    };
+    reduction_table["AssignExpr"] = delegate (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ts[0].result;
+        }
+        auto opstr = ts[1].terminal ? ts[1].token.str : ts[1].result.str;
+        assert (opstr.endsWith("="));
+        opstr.popBack();
+        if (opstr.empty) {
+            return ast(Ast.Type.assignment, ts[0].result, ts[2].result);
+        } else {
+            assert (0, "cant do += etc yet :d");
+        }
+    };
     reduction_table["OrOrExpr"] = reduce_binop;
     reduction_table["AndAndExpr"] = reduce_binop;
     reduction_table["OrExpr"] = reduce_binop;

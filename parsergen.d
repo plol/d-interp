@@ -68,15 +68,22 @@ private struct Sym(Tok) {
     }
 }
 
+enum RepeatParsing : bool {
+    no, yes
+}
+
 
 template ParserGen(Token, Result, Tok, alias getTok,
-        alias grammar, alias s, alias eof
+        alias grammar, alias s, alias eof,
+        RepeatParsing repeated_parsing = RepeatParsing.no
         ) if (is(typeof(getTok(Token.init)) : Tok)) {
 
     alias Result delegate(StackItem[]) ReduceFun;
 
     struct Parser {
         State[] states;
+
+        ReduceFun[string] reduction_table;
 
         StackItem[] stack;
         size_t current;
@@ -91,48 +98,32 @@ template ParserGen(Token, Result, Tok, alias getTok,
             current = 0;
         }
 
-        ReduceFun[string] reduction_table;
-
-        this(ReduceFun[string] rfs) {
-            populate_rules();
-            populate_firsts();
+        this(ReduceFun[string] rfs, State[] ss) {
 
             reduction_table = rfs;
-            states = [State(s)];
-            for (size_t i = 0; i < states.length; i += 1) {
-                writeln("i = ", i);
-                foreach (set; states[i].items.groupByPostStart()) {
-                    auto newstate = State(set.map!(a => a.next()).array());
-                    auto index = states.countUntil(newstate);
-                    if (index < 0) {
-                        writeln(set);
-                        states ~= newstate;
-                        index = states.length - 1;
-                    }
-                    auto start = set[0].post[0];
-                    states[i].transitions ~= Transition(start,
-                            cast(size_t)index);
-                }
-            }
+            states = ss;
         }
 
         void feed(Token token) {
             Tok t = getTok(token);
-            foreach (item; states[current].reductions) {
-                if (item.lookahead.canFind(t)) {
+            foreach (item; states[current].nucleus) {
+                if (item.post.empty && item.context.canFind(t)) {
                     reduce(item);
                     feed(token);
                     return;
                 }
+            }
+            if (t == eof) {
+                return;
             }
             shift(token);
         }
 
         void reduce(Item item) {
             auto to_remove = stack[$ - item.rule.length .. $];
-            if (item.rule.length > 0) {
-                writeln("reducing ", to_remove, " to ", item.orig);
-            }
+            //if (item.rule.length > 0) {
+            //    writeln("reducing ", to_remove, " to ", item.orig);
+            //}
             Result result;
             if (item.orig in reduction_table) {
                 result = reduction_table[item.orig](to_remove);
@@ -152,10 +143,6 @@ template ParserGen(Token, Result, Tok, alias getTok,
 
         void shift(Token token) {
             //writeln("shift ", token);
-            if (getTok(token) == eof) {
-                finished = true;
-                return;
-            }
             stack ~= StackItem(token);
             runNFA();
         }
@@ -219,21 +206,221 @@ template ParserGen(Token, Result, Tok, alias getTok,
         }
     }
 
+    Parser make_parser(ReduceFun[string] rfs) {
 
+        size_t[][Sym!Tok] successors;
+        State[] states;
+
+        size_t find_compatible_state(Sym!Tok prev, State newstate) {
+            if (prev !in successors) { return states.length; }
+            foreach (index; successors[prev]) {
+                if (states_compatible(states[index], newstate)) {
+                    return index;
+                }
+            }
+            return states.length;
+        }
+
+        void propagate_context(size_t index, Item[] cset) {
+            cset.sort();
+            size_t[] H_ixs;
+            foreach (i, ref item; states[index].nucleus) {
+                if (cset.empty) { break; }
+                if (item.without_context != cset.front.without_context) {
+                    continue;
+                }
+                auto prev_length = item.context.length;
+                //if (index == 1 && (item.post.empty || item.post.front ==
+                //            Sym!Tok(Tok.add))) {
+                //    static int wtf = 0;
+
+                //    auto d = setDifference(cset.front.context,
+                //            item.context);
+                //    if (!d.empty) {
+                //        wtf += 1;
+                //        if (wtf == 30) {
+                //            assert (0);
+                //        }
+                //        writefln("=========== Propagating =========== \n"
+                //                ~"%s with {%(%s %)}", item,
+                //                d);
+                //    }
+                //}
+                item.context.extend(cset.front.context);
+                if (item.context.length != prev_length) {
+                    H_ixs ~= i;
+                }
+                prev_length = item.context.length;
+                item.context.extend(cset.front.context);
+                assert (prev_length == item.context.length);
+                cset.popFront();
+            }
+            //auto H = H_ixs.map!(a => states[index].nucleus[a])();
+            Item[] H;
+            foreach (i; H_ixs) {
+                H ~= states[index].nucleus[i];
+            }
+
+            auto items = expand_items(H);
+            foreach (set; items.groupByPostStart()) {
+
+                auto start = set[0].post[0];
+
+                auto ts = states[index].transitions.find!"a.sym == b"(start);
+                if (ts.empty) { continue; }
+
+                foreach (ref item; set) {
+                    item = item.next();
+                }
+
+                propagate_context(ts[0].next, set);
+            }
+        }
+
+        void merge_states(size_t index, State newstate) {
+            propagate_context(index, newstate.nucleus);
+        }
+
+        populate_rules();
+        populate_firsts();
+
+        states = [make_start_state()];
+
+        for (size_t i = 0; i < states.length; i += 1) {
+            //writeln("i = ", i);
+
+            auto items = expand_items(states[i].nucleus);
+
+            foreach (set; items.groupByPostStart()) {
+
+                State newstate;
+                newstate.nucleus = set.map!(a => a.next()).array();
+
+                newstate.nucleus.sort();
+
+                auto start = set[0].post[0];
+                auto index = find_compatible_state(start, newstate);
+                if (index == states.length) {
+                    states ~= newstate;
+                    successors[start] ~= index;
+                } else {
+                    merge_states(index, newstate);
+                }
+                states[i].transitions ~= Transition(start,
+                        cast(size_t)index);
+            }
+        }
+
+        return Parser(rfs, states);
+    }
+
+    private bool compatible_contexts(Item[] a, Item[] b, size_t i, size_t j) {
+        // weakly compatible... D:
+        return
+            (   setIntersection(a[i].context, b[j].context).empty
+             && setIntersection(a[j].context, b[i].context).empty)
+            || !setIntersection(a[i].context, a[j].context).empty
+            || !setIntersection(b[i].context, b[j].context).empty;
+    }
+
+    private bool states_compatible(ref State a, ref State b) {
+        auto len = a.nucleus.length;
+        if (len != b.nucleus.length) { return false; }
+        foreach (i; 0 .. len) {
+            if (a.nucleus[i].without_context
+                    != b.nucleus[i].without_context) {
+                return false;
+            } 
+        }
+        for (int i; i < len - 1; i += 1) {
+            for (int j = i+1; j < len; j += 1) {
+                if (!compatible_contexts(a.nucleus, b.nucleus, i, j)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private State make_start_state() {
+        State start;
+        auto ctx = [eof];
+        static if (repeated_parsing) {
+            ctx ~= get_firsts(s);
+        }
+
+        foreach (ref rule; get_rules(s)) {
+            start.nucleus ~= Item(rule, ctx);
+        }
+        return start;
+    }
+    private Item[] expand_items(R)(R items_) {
+        Item[] items = items_.array();
+        for (size_t i = 0; i < items.length; i += 1) {
+            auto item = items[i];
+            if (item.post.empty || item.post[0].terminal) {
+                continue;
+            }
+            auto f = item.post[0];
+            foreach (ref rule; get_rules(f.name)) {
+                auto context = item.post.length > 1
+                    ? get_firsts(item.post[1])
+                    : item.context;
+                auto it = Item(rule, context);
+                if (!items.canFind(it)) {
+                    items ~= it;
+                }
+            }
+        }
+
+        if (items.empty) { return items; }
+
+        items = merge_items(items);
+
+        static bool by_post(Item a, Item b) {
+            if (a.post.empty) {
+                return !b.post.empty;
+            }
+            if (b.post.empty) {
+                return false;
+            }
+            return a.post[0] < b.post[0];
+        }
+        items.sort!by_post();
+
+        return items;
+    }
+
+    private Item[] merge_items(Item[] items) {
+        items.sort();
+        int j;
+        for (int i = 1; i < items.length; i += 1) {
+            if (i == j) {
+                continue;
+            }
+            if (items[j].without_context == items[i].without_context) {
+                items[j].context.extend(items[i].context);
+            } else {
+                j += 1;
+                items[j] = items[i];
+            }
+        }
+        return items[0 .. j+1];
+    }
 
 
     private struct Item {
         Rule!Tok* rule;
 
-        Tok[] lookahead;
+        Tok[] context;
         Sym!Tok[] post;
 
         string orig() @property { return rule.name; }
 
-        this(ref Rule!Tok r, Tok[] lah) {
+        this(ref Rule!Tok r, Tok[] ctx) {
             rule = &r;
             post = rule.syms;
-            lookahead = lah;
+            context = ctx;
         }
 
         Item next() {
@@ -241,24 +428,24 @@ template ParserGen(Token, Result, Tok, alias getTok,
             ret.post.popFront();
             return ret;
         }
-        Item without_lookahead() {
+        Item without_context() {
             auto ret = this;
-            ret.lookahead = [];
+            ret.context = [];
             return ret;
         }
 
         string toString() {
-            return format("%s -> * %(%s %) {%(%s %)}",
-                    orig, post, lookahead);
+            return format("%s -> %(%s %) * %(%s %) {%(%s %)}",
+                    orig, rule.syms[0 .. $ - post.length], post, context);
         }
         bool opEquals(Item o) {
             return rule == o.rule && post.length == o.post.length
-                && lookahead == o.lookahead;
+                && context == o.context;
         }
 
         int opCmp(Item o) {
             mixin (simpleCmp("o",
-                        "rule.name", "rule.syms", "post.length", "lookahead"));
+                        "rule.name", "rule.syms", "post.length", "context"));
         }
     }
 
@@ -270,93 +457,18 @@ template ParserGen(Token, Result, Tok, alias getTok,
     }
 
     private struct State {
-        Item[] items;
-        //size_t first_shift;
-        Item[] reductions;
+        Item[] nucleus;
         Transition[] transitions;
 
-        this(string start) {
-            foreach (ref rule; get_rules(start)) { 
-                items ~= Item(rule, [eof] ~ get_firsts(start));
-            }
-            expand_items();
-        }
-        this(Item[] _items) {
-            items = _items;
-            expand_items();
-        }
-        private void expand_items() {
-            for (size_t i = 0; i < items.length; i += 1) {
-                auto item = items[i];
-                if (item.post.empty || item.post[0].terminal) {
-                    continue;
-                }
-                auto f = item.post[0];
-                foreach (ref rule; get_rules(f.name)) {
-                    auto lookahead = item.post.length > 1 
-                        ? get_firsts(item.post[1])
-                        : item.lookahead;
-                    auto it = Item(rule, lookahead);
-                    if (!items.canFind(it)) {
-                        items ~= it;
-                    }
-                }
-            }
-
-            merge_items();
-
-            static bool by_post(Item a, Item b) {
-                if (a.post.empty) {
-                    return !b.post.empty;
-                }
-                if (b.post.empty) {
-                    return false;
-                }
-                return a.post[0] < b.post[0];
-            }
-            items.sort!by_post();
-
-
-            size_t first_shift;
-            while (first_shift < items.length
-                    && items[first_shift].post.empty) {
-                first_shift += 1;
-            }
-            //writefln("Items post-post-sort:\n%(%s\n%)\n\n", items);
-            //assert (0);
-            reductions = items;
-            reductions.length = first_shift;
-        }
-
-        void merge_items() {
-            items.sort();
-            //writefln("Items pre-merge:\n%(%s\n%)\n\n", items);
-            int j;
-            for (int i; i < items.length; i += 1) {
-                if (i == j) {
-                    continue;
-                }
-                if (items[i].without_lookahead == items[j].without_lookahead) {
-                    items[j].lookahead ~= items[i].lookahead;
-                    items[j].lookahead.make_set();
-                } else {
-                    j += 1;
-                    items[j] = items[i];
-                }
-            }
-            items = items[0 .. j+1];
-            //writefln("Items post-merge:\n%(%s\n%)\n\n", items);
-        }
-
         bool opEquals(State o) {
-            return items == o.items;
+            return nucleus == o.nucleus;
         }
         string toString() {
             if (transitions.empty) {
-                return format(" %(%s\n %)", items);
+                return format(" %(%s\n %)", nucleus);
             } else {
                 return format(" %(%s\n %)\n    %(%s\n    %)",
-                        items, transitions);
+                        nucleus, transitions);
             }
         }
     }

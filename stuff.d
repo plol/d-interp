@@ -15,6 +15,17 @@ T[] make_set(T)(ref T[] ts) {
     return ts;
 }
 
+T[] extend(T)(ref T[] ts, T[] os) {
+    ts = ts.dup;
+    ts ~= os;
+    return ts.make_set();
+}
+
+R tail(R)(R r) if (isInputRange!R) {
+    r.popFront();
+    return r;
+}
+
 struct Trie(K,V) {
     alias ElementType!K E;
     private Trie[E] nexts;

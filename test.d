@@ -72,8 +72,8 @@ void main() {
 
     ct_env.aadeclare("myaa", bro);
 
-    ct_env.funcdeclare!add_int("$add_int");
-    ct_env.funcdeclare!lt_int("$lt_int");
+    ct_env.funcdeclare!add_int("$add");
+    ct_env.funcdeclare!lt_int("$lt");
     ct_env.funcdeclare!cast_int_bool("$cast_int_bool");
     ct_env.funcdeclare!cast_int_int_aa_p_void_p("$cast_int_int_aa_p_void_p");
     ct_env.funcdeclare!cast_int_int_aa_void_p("$cast_int_int_aa_void_p");
@@ -162,7 +162,7 @@ void main() {
     writeln("HI");
     auto sw = StopWatch();
     sw.start();
-    auto p = P.Parser(reduction_table);
+    auto p = P.make_parser(reduction_table);
     sw.stop();
     writeln("TOOK ", sw.peek().hnsecs / 10_000.0, " ms!",
            " (", p.states.length, ")");
@@ -175,7 +175,11 @@ void main() {
     auto env = ct_env.get_runtime_env();
 
     while (true) {
-        write("D > ");
+        if (p.stack.empty) {
+            write("D > ");
+        } else {
+            write("..> ");
+        }
         auto input = readln();
 
         if (input.empty) {
@@ -187,19 +191,24 @@ void main() {
         
         if (lx.empty) continue;
 
-        writeln(lx);
+        //writeln(lx);
 
         foreach (tok; lx) {
             p.feed(tok);
         }
         p.feed(Token(-1, "", Tok.eof));
-        writeln(p.finished, " ? ", p.results);
+        if (p.results.empty) {
+            continue;
+        }
+        //writefln("%(%s;\n%)", p.results);
 
         foreach (r; p.results) {
             auto ir = r.toIR(ct_env);
             resolve(ir, ct_env);
-            writeln(interpret(ir, env).toString(ir.ti));
+            if (ir.ti.type != TI.Type.void_) {
+                writeln(interpret(ir, env).toString(ir.ti));
+            }
         }
-        p.reset();
+        p.results = [];
     }
 }
