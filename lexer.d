@@ -194,15 +194,20 @@ enum Tok {
         eof,
 }
 
-struct Token {
+struct Loc {
     int line;
     string file;
+}
+struct Token {
+    Loc loc;
 
     Tok tok;
     string str;
 
     bool opEquals(Token o) {
-        return tok == o.tok && line == o.line && file == o.file && str == o.str;
+        return tok == o.tok
+            && loc.line == o.loc.line && loc.file == o.loc.file
+            && str == o.str;
     }
 }
 
@@ -402,13 +407,6 @@ template strings(Rest...) {
         alias TypeTuple!(Rest[0], strings!(Rest[2 .. $])) strings;
     }
 }
-template tuples(Rest...) {
-    static if (Rest.length == 0) {
-        alias TypeTuple!() tuples;
-    } else {
-        alias TypeTuple!(tuple(Rest[0], Rest[1]), tuples!(Rest[2 .. $])) tuples;
-    }
-}
 
 template RegexEscapeChar(string s) {
     static if (s == "." || s == "$" || s == "(" || s == ")" || s == "|"
@@ -468,7 +466,7 @@ static this() {
     number_re = regex("^("~numberre~")");
     char_re = regex("^("~charre~")");
 
-    foreach (t; [tuples!operators, tuples!keywords]) {
+    foreach (t; [tuples!(2, operators), tuples!(2, keywords)]) {
         lookup_table[t[0]] = t[1];
     }
 }
@@ -546,7 +544,7 @@ struct Lexer {
         auto i2 = input;
 
         void finalize_token() {
-            _front = Token(starting_line, file, Tok.string_,
+            _front = Token(Loc(starting_line, file), Tok.string_,
                     input[0 .. $ - i2.length]);
             input = i2;
         }
@@ -641,7 +639,7 @@ struct Lexer {
         skipNonTokens();
 
         if (input.empty) {
-            _front = Token(line, file, Tok.eof, "");
+            _front = Token(Loc(line, file), Tok.eof, "");
             return;
         }
 
@@ -677,7 +675,7 @@ struct Lexer {
         } else {
             assert (0);
         }
-        _front = Token(line, file, tok, cap);
+        _front = Token(Loc(line, file), tok, cap);
     }
     bool empty() @property {
         return _front.tok == Tok.eof && input.empty;

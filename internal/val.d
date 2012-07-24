@@ -1,9 +1,10 @@
 module internal.val;
 
-import std.stdio;
 import std.algorithm;
 import std.array;
 import std.conv;
+import std.stdio;
+import std.typetuple;
 
 import internal.typeinfo;
 
@@ -65,9 +66,11 @@ struct Val {
         switch (type) {
             default: return text("Val(", type, ")");
             case TI.Type.void_: return "no value produced";
-            case TI.Type.bool_: return to!string(bool_val);
-            case TI.Type.int_: return to!string(int_val);
-            case TI.Type.char_: return "'"~to!string(char_val)~"'";
+            foreach (T; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
+                        int, uint, long, ulong, float, double, real)) {
+                mixin ("case TI.Type."~T.stringof~"_:
+                        return \""~T.stringof~" \"~to!string("~T.stringof~"_val);");
+            }
             case TI.Type.assocarray:
                                 return to!string(*cast(int[int]*)&pointer);
         }

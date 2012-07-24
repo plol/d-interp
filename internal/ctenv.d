@@ -25,18 +25,16 @@ final class CTEnv {
         return parent.typeof_(var_name);
     }
 
-    IR get_function(string func_name) {
-        assert (functions[func_name].length == 1);
-        return functions[func_name][0];
+    IR[] get_function(string func_name) {
+        return functions[func_name];
     }
 
     IR lookup(string name) {
         assert (!(name in functions && name in vars));
 
         if (name in functions) {
-            assert (functions[name].length == 1); // NO OVERLOADING
             auto ret = new IR(IR.Type.function_, name);
-            ret.ti = functions[name][0].ti;
+            ret.ti.type = TI.Type.function_;
             ret.resolved = true;
             return ret;
         } else if (name in vars) {
@@ -171,14 +169,36 @@ template preUnpackVar(T) {
     }
 }
 template unpackVar(T) {
-    static if (is(T == int)) {
+    static if (is(T == bool)) {
+        enum unpackVar = "bool_val";
+    } else static if (is(T == char)) {
+        enum unpackVar = "char_val";
+    } else static if (is(T == wchar)) {
+        enum unpackVar = "wchar_val";
+    } else static if (is(T == dchar)) {
+        enum unpackVar = "dchar_val";
+    } else static if (is(T == byte)) {
+        enum unpackVar = "byte_val";
+    } else static if (is(T == ubyte)) {
+        enum unpackVar = "ubyte_val";
+    } else static if (is(T == short)) {
+        enum unpackVar = "short_val";
+    } else static if (is(T == ushort)) {
+        enum unpackVar = "ushort_val";
+    } else static if (is(T == int)) {
         enum unpackVar = "int_val";
     } else static if (is(T == uint)) {
         enum unpackVar = "uint_val";
+    } else static if (is(T == long)) {
+        enum unpackVar = "long_val";
     } else static if (is(T == ulong)) {
         enum unpackVar = "ulong_val";
-    } else static if (is(T == bool)) {
-        enum unpackVar = "bool_val";
+    } else static if (is(T == float)) {
+        enum unpackVar = "float_val";
+    } else static if (is(T == double)) {
+        enum unpackVar = "double_val";
+    } else static if (is(T == real)) {
+        enum unpackVar = "real_val";
     } else static if (is(T U == U*)) {
         enum unpackVar = "pointer";
     } else static if (is(T == class)) {

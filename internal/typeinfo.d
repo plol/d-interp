@@ -98,6 +98,11 @@ struct TI {
         delegate_,
         function_,
 
+        const_,
+        immutable_,
+        inout_,
+        shared_,
+
         builtin_function,
         builtin_delegate,
     }

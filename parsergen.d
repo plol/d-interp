@@ -68,14 +68,8 @@ private struct Sym(Tok) {
     }
 }
 
-enum RepeatParsing : bool {
-    no, yes
-}
-
-
 template ParserGen(Token, Result, Tok, alias getTok,
-        alias grammar, alias s, alias eof,
-        RepeatParsing repeated_parsing = RepeatParsing.no
+        alias grammar, alias s, alias eof
         ) if (is(typeof(getTok(Token.init)) : Tok)) {
 
     alias Result delegate(StackItem[]) ReduceFun;
@@ -106,6 +100,17 @@ template ParserGen(Token, Result, Tok, alias getTok,
 
         void feed(Token token) {
             Tok t = getTok(token);
+            if (t != eof) {
+                foreach (transition; states[current].transitions) {
+                    if (!transition.sym.terminal) {
+                        continue;
+                    }
+                    if (transition.sym.tok == t) {
+                        shift(token);
+                        return;
+                    }
+                }
+            }
             foreach (item; states[current].nucleus) {
                 if (item.post.empty && item.context.canFind(t)) {
                     reduce(item);
@@ -116,14 +121,14 @@ template ParserGen(Token, Result, Tok, alias getTok,
             if (t == eof) {
                 return;
             }
-            shift(token);
+            writeln("Cannot find shift or reduction for ", token, "\n",
+                            "stack = ", stack);
+            assert (0);
         }
 
         void reduce(Item item) {
             auto to_remove = stack[$ - item.rule.length .. $];
-            //if (item.rule.length > 0) {
-            //    writeln("reducing ", to_remove, " to ", item.orig);
-            //}
+            writeln("reducing ", to_remove, " to ", item.orig);
             Result result;
             if (item.orig in reduction_table) {
                 result = reduction_table[item.orig](to_remove);
@@ -345,9 +350,6 @@ template ParserGen(Token, Result, Tok, alias getTok,
     private State make_start_state() {
         State start;
         auto ctx = [eof];
-        static if (repeated_parsing) {
-            ctx ~= get_firsts(s);
-        }
 
         foreach (ref rule; get_rules(s)) {
             start.nucleus ~= Item(rule, ctx);
@@ -490,6 +492,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
     }
 
     Tok[] get_firsts(string s) {
+        assert (s in rules, s ~ " not in firsts!");
         return firsts[s];
     }
 
@@ -512,6 +515,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
         }
     }
     Rule!Tok[] get_rules(string s) {
+        assert (s in rules, s ~ " not in rules!");
         return rules[s];
     }
 

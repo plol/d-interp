@@ -2,6 +2,16 @@ import std.stdio;
 
 import std.typecons, std.functional, std.conv, std.traits, std.range;
 import std.format, std.array, std.string, std.algorithm;
+import std.typetuple;
+
+template tuples(int n, Rest...) {
+    static assert (Rest.length % n == 0);
+    static if (Rest.length == 0) {
+        alias TypeTuple!() tuples;
+    } else {
+        alias TypeTuple!(tuple(Rest[0 .. n]), tuples!(n, Rest[n .. $])) tuples;
+    }
+}
 
 string format(T...)(T t) {
     auto app = appender!string();

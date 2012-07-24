@@ -3,6 +3,8 @@ module internal.ast;
 import std.array, std.string, std.algorithm, std.range, std.conv;
 import std.exception, std.stdio, std.typecons;
 
+import internal.typeinfo;
+
 import internal.ir;
 alias internal.ir ir;
 
@@ -12,18 +14,32 @@ import stuff;
 
 alias stuff.format format;
 
-struct Operator {
-    enum Type {
-        prefix,
-        postfix,
-        binary,
+
+struct TypeMod {
+    static enum Type {
+        none,
+
+        pointer,
+        array,
+        slicy, // [int], [10]
+
+        const_,
+        immutable_,
+        inout_,
+        shared_,
     }
     Type type;
-    string ast;
+    Ast ast;
+}
+static struct TypeData {
+    TypeMod mod;
+    Ast ast;
 }
 
 final class Ast {
     static enum Type {
+        nothing,
+
         if_,
         while_,
         switch_,
@@ -44,7 +60,16 @@ final class Ast {
 
         application,
 
+        condexpr,
+
+        cast_,
+
+        type,
+        type_mod,
+        basic_type,
+
         assignment,
+        op_assignment,
 
         typeid_,
         typeof_,
@@ -53,6 +78,7 @@ final class Ast {
         deref,
 
         member_lookup,
+        module_lookup,
 
         bool_,
         dchar_,
@@ -99,37 +125,32 @@ final class Ast {
         string str;
         wstring wstr;
         dstring dstr;
-        bool bool_val = void;
-        dchar dchar_val = void;
-        ulong ulong_val = void;
-        real real_val = void;
+        bool bool_val;
+        dchar dchar_val;
+        ulong ulong_val;
+        real real_val;
 
-        Ast next = void;
-        Ast[] array = void;
-        Ast[] sequence = void;
-        Ast[Ast] assocarray = void;
+        Ast next;
+        Ast[] array;
+        Ast[] sequence;
+        Ast[Ast] assocarray;
         While while_;
         If if_;
         Bin bin;
         Binop binop;
         Lookup lookup;
-
-        Operator operator;
-        struct {
-            Operator[] operators;
-            Ast[] operands;
-        }
+        TI.Type ti_type;
+        TypeData typedata;
+        TypeMod type_mod;
     }
 
     Type type;
-    int line = -1;
-    string file = "no file";
+    Loc loc;
     PossibleValues values;
     alias values this;
 
     this(Token t) {
-        line = t.line;
-        file = t.file;
+        loc = t.loc;
         if (t.tok == Tok.num) {
             parse_num(t.str);
         } else if (t.tok == Tok.string_) {
@@ -142,11 +163,64 @@ final class Ast {
             str = t.str;
         }
     }
-    this(Type t, Ast[] w) {
-        if (!w.empty) {
-            file = w[0].file;
-            line = w[0].line;
+    this(Type t, Loc l, TI.Type ti) {
+        type = t;
+        loc = l;
+        if (t == Type.basic_type) {
+            ti_type = ti;
+        } else {
+            assert (0);
         }
+    }
+
+    this(Type t, TypeMod.Type tm) {
+        this(t, Loc(0, "unspecified"), tm);
+    }
+    this(Type t, Loc l, TypeMod.Type tm) {
+        type = t;
+        loc = l;
+        if (t == Type.type_mod) {
+            type_mod = TypeMod(tm);
+        } else {
+            assert (0);
+        }
+    }
+    this(Type t, TypeMod.Type tm, Ast n1) {
+        this(t, Loc(0, "unspecified"), tm, n1);
+    }
+    this(Type t, Loc l, TypeMod.Type tm, Ast n1) {
+        type = t;
+        loc = l;
+        if (t == Type.type_mod) {
+            type_mod = TypeMod(tm, n1);
+        } else {
+            assert (0, text(t));
+        }
+    }
+
+    this(Type t, Loc l, TypeMod tm, Ast n1) {
+        type = t;
+        loc = l;
+        if (t == Type.type) {
+            typedata = TypeData(tm, n1);
+        } else {
+            assert (0);
+        }
+    }
+
+
+    this(Type t, Loc l) {
+        loc = l;
+        if (t == Type.nothing) {
+        } else {
+            assert (0);
+        }
+    }
+    this(Type t, Ast[] w) {
+        this(t, Loc(0, "unspecified"), w);
+    }
+    this(Type t, Loc l, Ast[] w) {
+        loc = l;
         type = t;
         if (t == Type.sequence) {
             values.sequence = w;
@@ -155,36 +229,49 @@ final class Ast {
         }
     }
 
-    this(Type t, Ast n) {
-        file = n.file;
-        line = n.line;
+    this(Type t, Ast n) { this(t, n.loc, n); }
+    this(Type t, Loc l, Ast n) {
+        loc = l;
         type = t;
         if (t == Type.statement) {
             next = n;
         } else if (t == Type.binop) {
             str = n.str;
+        } else if (t == Type.module_lookup) {
+            next = n;
+        } else if (t == Type.type) {
+            typedata = TypeData(TypeMod(TypeMod.Type.none), n);
         } else {
             assert (0);
         }
     }
-    this(Type t, Ast n1, Ast n2) {
-        file = n1.file;
-        line = n1.line;
+    this(Type t, Loc l, Ast n1, Ast n2) {
+        loc = l;
         type = t;
         if (t == Type.while_) {
             values.while_ = While(n1, n2);
         } else if (t == Type.if_) {
-            values.if_ = If(n1, n2, null);
+            assert (0); values.if_ = If(n1, n2, null);
         } else if (t == Type.assignment) {
+            values.bin = Bin(n1, n2);
+        } else if (t == Type.application) {
             values.bin = Bin(n1, n2);
         } else {
             assert (0);
         }
     }
+    this(Type t, Loc l, Ast n1, Ast n2, Ast n3) {
+        loc = l;
+        type = t;
+        if (t == Type.if_) {
+            values.if_ = If(n1, n2, n3);
+        } else {
+            assert (0);
+        }
+    }
 
-    this(Type t, string s, Ast n1, Ast n2) {
-        file = n1.file;
-        line = n1.line;
+    this(Type t, Loc l, string s, Ast n1, Ast n2) {
+        loc = l;
         type = t;
         if (t == Type.binop) {
             values.binop = Binop(s, n1, n2);
@@ -193,15 +280,15 @@ final class Ast {
         }
     }
 
-    this(Type t, Ast n1, string s) {
-        file = n1.file;
-        line = n1.line;
+    this(Type t, Loc l, Ast n1, string s) {
+        loc = l;
         type = t;
         if (t == Type.member_lookup) {
             values.lookup = Lookup(n1, s);
+        } else {
+            assert (0);
         }
     }
-
 
     private void parse_string(string s) {
         if (s.front == 'q') {
@@ -364,62 +451,25 @@ final class Ast {
             case Type.binop:
                 return format("(%s %s %s)",
                         values.binop.lhs, values.binop.op, values.binop.rhs);
-        }
-    }
-
-    IR toIR(CTEnv env) {
-        //IR toIR_env(Ast a) { return a.toIR(env); } silly shit
-
-        IR[] wtf;
-        
-        switch (type) {
-            default: assert (0);
-            case Type.if_: return ir.if_(
-                              values.if_.if_part.toIR(env),
-                              values.if_.then_part.toIR(env),
-                              values.if_.else_part.toIR(env));
-            case Type.while_: return ir.while_(
-                                 values.while_.condition.toIR(env),
-                                 values.while_.body_.toIR(env));
-            case Type.statement: return next.toIR(env);
-
-            case Type.id: return ir.id(str);
-            //case Type.sequence: return ir.seq(values.sequence
-            //                            .map!toIR_env().array());
-            case Type.sequence: 
-                          foreach (a; values.sequence) {
-                              wtf ~= a.toIR(env);
-                          }
-                          return ir.seq(wtf);
-
-            case Type.int_: return ir.constant(env, to!int(ulong_val));
-            case Type.uint_: return ir.constant(env, to!uint(ulong_val));
-            case Type.long_: return ir.constant(env, to!long(ulong_val));
-            case Type.ulong_: return ir.constant(env, ulong_val);
-
-            case Type.float_: return ir.constant(env, to!float(real_val));
-            case Type.double_: return ir.constant(env, to!double(real_val));
-            case Type.real_: return ir.constant(env, real_val);
-
-            case Type.assignment: return ir.set(
-                                          bin.lhs.toIR(env),
-                                          bin.rhs.toIR(env));
-            case Type.binop: return ir.call(
-                                     ir.id(opfuncname(binop.op)),
-                                     binop.lhs.toIR(env),
-                                     binop.rhs.toIR(env));
+            case Type.basic_type:
+                return format("%s", ti_type);
+            case Type.type:
+                return format_type(values.typedata);
         }
     }
 }
 
-string opfuncname(string op) {
-    switch (op) {
-        case "+": return "$add";
-        case "-": return "$sub";
-        case "*": return "$mul";
-        case "/": return "$div";
-        case "<": return "$lt";
-        default: assert (0, "no opfuncname for " ~ op);
+string format_type(TypeData td) {
+    switch (td.mod.type) {
+        default: assert (0);
+        case TypeMod.Type.none: return format("%s", td.ast);
+        case TypeMod.Type.pointer: return format("%s*", td.ast);
+        case TypeMod.Type.array: return format("%s[]", td.ast);
+        case TypeMod.Type.slicy: return format("%s[%s]", td.ast, td.mod.ast);
+        case TypeMod.Type.const_: return format("const(%s)", td.ast);
+        case TypeMod.Type.immutable_: return format("immutable(%s)", td.ast);
+        case TypeMod.Type.inout_: return format("inout(%s)", td.ast);
+        case TypeMod.Type.shared_: return format("shared(%s)", td.ast);
     }
 }
 

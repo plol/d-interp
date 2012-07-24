@@ -7,7 +7,6 @@ TI resolve(IR ir, CTEnv env) {
     immutable table = [
         IR.Type.if_: &resolve_if,
         IR.Type.while_: &resolve_while,
-        IR.Type.nothing: &resolve_nothing,
         IR.Type.variable: &resolve_variable,
         IR.Type.sequence: &resolve_sequence,
         IR.Type.application: &resolve_application,
@@ -15,10 +14,12 @@ TI resolve(IR ir, CTEnv env) {
         IR.Type.typeid_: &resolve_typeid,
         IR.Type.addressof: &resolve_addressof,
         IR.Type.deref: &resolve_deref,
-        IR.Type.function_: &resolve_function,
         IR.Type.id: &resolve_id,
         ];
 
+    if (ir is null) {
+        return TI.void_;
+    }
     if (ir.resolved) {
         return ir.ti;
     }
@@ -107,7 +108,8 @@ TI resolve_application(IR ir, CTEnv env) {
     auto op = ir.application.operator;
     if (op.type == IR.Type.function_) {
         // swap type to constant, DO OVERLOADING RESOLUTION, ifti? D:
-        ir.application.operator = env.get_function(op.name);
+        ir.application.operator =
+            resolve_overload_set(env.get_function(op.name), arg_types);
     } else if (op.type == IR.Type.variable) {
         // do nothing i guess
         assert (0);
@@ -136,15 +138,29 @@ TI resolve_application(IR ir, CTEnv env) {
     return func_type.next;
 }
 
+IR resolve_overload_set(IR[] functions, TI[] arg_types) {
+    if (functions.length == 1) {
+        return functions[0];
+    } else {
+        foreach (func; functions) {
+            auto func_args = func.ti.operands;
+            if (func_args == arg_types) {
+                return func;
+            }
+        }
+        assert (0, "doesnt do best match only perfect match :(");
+    }
+}
 
 TI resolve_variable(IR ir, CTEnv env) {
     return env.typeof_(ir.name);
 }
 TI resolve_sequence(IR ir, CTEnv env) {
+    auto res = TI.void_;
     foreach (e; ir.sequence) {
-        e.resolve(env);
+        res = e.resolve(env);
     }
-    return TI.void_;
+    return res;
 } 
 TI resolve_assignment(IR ir, CTEnv env) {
     auto lhs = ir.bin.lhs.resolve(env);
@@ -155,18 +171,11 @@ TI resolve_assignment(IR ir, CTEnv env) {
 
     return lhs;
 }
-TI resolve_nothing(IR ir, CTEnv env) {
-    return TI.void_;
-}
 
 TI resolve_deref(IR ir, CTEnv env) {
     auto next = ir.next.resolve(env);
     enforce(next.type == TI.Type.pointer);
     return next.next;
-}
-
-TI resolve_function(IR ir, CTEnv env) {
-    return env.get_function(ir.name).ti;
 }
 
 TI resolve_id(IR ir, CTEnv env) {

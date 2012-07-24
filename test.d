@@ -1,9 +1,13 @@
 import std.stdio, std.traits, std.conv;
 
-import std.datetime, std.array;
+import std.datetime, std.array, std.typetuple;
+import std.typecons;
+
+import stuff;
 
 import internal.ir, internal.env, internal.interp, internal.val;
 import internal.typeinfo, internal.ctenv, internal.typecheck;
+import internal.ast2ir;
 
 import lexer, parser;
 
@@ -25,9 +29,6 @@ import lexer, parser;
 //        int_int_bool_delegate.ti1 = bool_type;
 //        int_int_bool_delegate.tis = [int_type, int_type];
 
-int add_int(int a, int b) {
-    return a + b;
-}
 bool lt_int(int a, int b) {
     return a < b;
 }
@@ -60,6 +61,23 @@ int* cast_void_p_int_p(void* p) {
     return cast(int*)p;
 }
 
+int test_int_shit(int a, int b) {
+    return a+b;
+}
+
+auto add(T, U)(T t, U u) {
+    return t + u;
+}
+auto sub(T, U)(T t, U u) {
+    return t - u;
+}
+auto div(T, U)(T t, U u) {
+    return t / u;
+}
+auto mul(T, U)(T t, U u) {
+    return t * u;
+}
+
 void main() {
     auto ct_env = new CTEnv();
 
@@ -72,7 +90,16 @@ void main() {
 
     ct_env.aadeclare("myaa", bro);
 
-    ct_env.funcdeclare!add_int("$add");
+    foreach (T; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
+                int, uint, long, ulong, float, double, real)) {
+        foreach (U; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
+                    int, uint, long, ulong, float, double, real)) {
+            ct_env.funcdeclare!(add!(T, U))("$add");
+            ct_env.funcdeclare!(sub!(T, U))("$sub");
+            ct_env.funcdeclare!(div!(T, U))("$div");
+            ct_env.funcdeclare!(mul!(T, U))("$mul");
+        }
+    }
     ct_env.funcdeclare!lt_int("$lt");
     ct_env.funcdeclare!cast_int_bool("$cast_int_bool");
     ct_env.funcdeclare!cast_int_int_aa_p_void_p("$cast_int_int_aa_p_void_p");
@@ -196,17 +223,18 @@ void main() {
         foreach (tok; lx) {
             p.feed(tok);
         }
-        p.feed(Token(-1, "", Tok.eof));
+        p.feed(Token(Loc(-1, ""), Tok.eof, ""));
         if (p.results.empty) {
             continue;
         }
-        //writefln("%(%s;\n%)", p.results);
+        writefln("%(%s\n%)", p.results); p.results = []; continue;
 
         foreach (r; p.results) {
-            auto ir = r.toIR(ct_env);
+            auto ir = toIR(r, ct_env);
             resolve(ir, ct_env);
+            auto val = interpret(ir, env);
             if (ir.ti.type != TI.Type.void_) {
-                writeln(interpret(ir, env).toString(ir.ti));
+                writeln(val.toString(ir.ti));
             }
         }
         p.results = [];

@@ -31,6 +31,7 @@ Val interpret_if(IR ir, Env env) {
     return Val.void_;
 }
 Val interpret_while(IR ir, Env env) {
+    writeln("interpreting while!");
     while (interpret(ir.while_.condition, env).bool_val) {
         interpret(ir.while_.body_, env);
     } 
