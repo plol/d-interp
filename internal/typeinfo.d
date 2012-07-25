@@ -53,7 +53,7 @@ struct TI {
         TypeInfo_Shared shared_ = void;
         TypeInfo_Inout inout_ = void;
 
-        TypeInfo primitive = void;
+        TypeInfo primitive = null;
     }
 
     enum Type {

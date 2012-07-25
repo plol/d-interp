@@ -90,16 +90,16 @@ void main() {
 
     ct_env.aadeclare("myaa", bro);
 
-    foreach (T; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
-                int, uint, long, ulong, float, double, real)) {
-        foreach (U; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
-                    int, uint, long, ulong, float, double, real)) {
-            ct_env.funcdeclare!(add!(T, U))("$add");
-            ct_env.funcdeclare!(sub!(T, U))("$sub");
-            ct_env.funcdeclare!(div!(T, U))("$div");
-            ct_env.funcdeclare!(mul!(T, U))("$mul");
-        }
-    }
+    //foreach (T; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
+    //            int, uint, long, ulong, float, double, real)) {
+    //    foreach (U; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
+    //                int, uint, long, ulong, float, double, real)) {
+    //        ct_env.funcdeclare!(add!(T, U))("$add");
+    //        ct_env.funcdeclare!(sub!(T, U))("$sub");
+    //        ct_env.funcdeclare!(div!(T, U))("$div");
+    //        ct_env.funcdeclare!(mul!(T, U))("$mul");
+    //    }
+    //}
     ct_env.funcdeclare!lt_int("$lt");
     ct_env.funcdeclare!cast_int_bool("$cast_int_bool");
     ct_env.funcdeclare!cast_int_int_aa_p_void_p("$cast_int_int_aa_p_void_p");
@@ -199,8 +199,6 @@ void main() {
         f.writeln("state ", i, ":\n", state);
     }
 
-    auto env = ct_env.get_runtime_env();
-
     while (true) {
         if (p.stack.empty) {
             write("D > ");
@@ -214,7 +212,7 @@ void main() {
             break;
         }
 
-        auto lx = Lexer(input);
+        auto lx = Lexer(input, "<stdin>");
         
         if (lx.empty) continue;
 
@@ -227,15 +225,20 @@ void main() {
         if (p.results.empty) {
             continue;
         }
-        writefln("%(%s\n%)", p.results); p.results = []; continue;
+        //writefln("%(%s\n%)", p.results); p.results = []; continue;
 
         foreach (r; p.results) {
             auto ir = toIR(r, ct_env);
+            if (ir is null) continue;
             resolve(ir, ct_env);
-            auto val = interpret(ir, env);
-            if (ir.ti.type != TI.Type.void_) {
-                writeln(val.toString(ir.ti));
-            }
+            auto env = ct_env.get_runtime_env();
+            //try {
+                auto val = interpret(ir, env);
+                if (ir.ti.type != TI.Type.void_) {
+                    writeln(val.toString(ir.ti));
+                }
+            //} catch......
+            ct_env.assimilate(env);
         }
         p.results = [];
     }

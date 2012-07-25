@@ -59,6 +59,11 @@ final class CTEnv {
                 get_ti!(typeof(&T))(), Val(&wrap!T));
     }
 
+    void declare(TI ti, string name, bool initialize=true) {
+        vars[name] = new IR(IR.Type.constant, ti,
+                initialize ? init_val(ti) : Val());
+    }
+
     Env get_runtime_env() {
         auto env = new Env;
 
@@ -67,6 +72,15 @@ final class CTEnv {
         }
 
         return env;
+    }
+
+    void assimilate(Env env) {
+        foreach (name, val; env.vars) {
+            vars[name].val = val;
+        }
+        if (parent !is null) {
+            parent.assimilate(env.parent);
+        }
     }
 
     ref TI get_ti(T...)() if (T.length == 1) {
@@ -136,6 +150,31 @@ final class CTEnv {
         }
     }
     mixin (make_primitive_tis!primitive_types());
+
+
+
+    TI get_basic_ti(TI.Type ti_type) {
+        switch (ti_type) {
+            default: assert (0, text(ti_type));
+            foreach (T; primitive_types) {
+                case mixin("TI.Type."~T.stringof~"_"): return get_ti!T();
+            }
+        }
+        assert (0);
+    }
+}
+
+Val init_val(TI ti) {
+    switch (ti.type) {
+        default: assert (0, text(ti.type));
+        case TI.Type.void_: return Val();
+        foreach (T; primitive_types) {
+            static if (is(T == void)) {} else {
+                case mixin("TI.Type."~T.stringof~"_"): return Val(T.init);
+            }
+        }
+    }
+    assert (0);
 }
 
 string make_primitive_tis(Ts...)() {

@@ -17,7 +17,7 @@ alias stuff.format format;
 
 struct TypeMod {
     static enum Type {
-        none,
+        nothing,
 
         pointer,
         array,
@@ -56,6 +56,7 @@ final class Ast {
         statement,
 
         id,
+        id_list,
         sequence,
 
         application,
@@ -131,9 +132,8 @@ final class Ast {
         real real_val;
 
         Ast next;
-        Ast[] array;
         Ast[] sequence;
-        Ast[Ast] assocarray;
+        Token[] id_list;
         While while_;
         If if_;
         Bin bin;
@@ -172,6 +172,15 @@ final class Ast {
             assert (0);
         }
     }
+    this(Type t, Loc l, Token[] ts) {
+        type = t;
+        loc = l;
+        if (t == Type.id_list) {
+            id_list = ts;
+        } else {
+            assert (0);
+        }
+    }
 
     this(Type t, TypeMod.Type tm) {
         this(t, Loc(0, "unspecified"), tm);
@@ -193,6 +202,8 @@ final class Ast {
         loc = l;
         if (t == Type.type_mod) {
             type_mod = TypeMod(tm, n1);
+        } else if (t == Type.type) {
+            typedata = TypeData(TypeMod(tm), n1);
         } else {
             assert (0, text(t));
         }
@@ -209,6 +220,7 @@ final class Ast {
     }
 
 
+    this(Type t) { this(t, Loc(0, "unspecified")); }
     this(Type t, Loc l) {
         loc = l;
         if (t == Type.nothing) {
@@ -237,10 +249,12 @@ final class Ast {
             next = n;
         } else if (t == Type.binop) {
             str = n.str;
+        } else if (t == Type.cast_) {
+            values.bin = Bin(ast(Ast.Type.nothing), n);
         } else if (t == Type.module_lookup) {
             next = n;
         } else if (t == Type.type) {
-            typedata = TypeData(TypeMod(TypeMod.Type.none), n);
+            typedata = TypeData(TypeMod(TypeMod.Type.nothing), n);
         } else {
             assert (0);
         }
@@ -255,6 +269,10 @@ final class Ast {
         } else if (t == Type.assignment) {
             values.bin = Bin(n1, n2);
         } else if (t == Type.application) {
+            values.bin = Bin(n1, n2);
+        } else if (t == Type.vardecl) {
+            values.bin = Bin(n1, n2);
+        } else if (t == Type.cast_) {
             values.bin = Bin(n1, n2);
         } else {
             assert (0);
@@ -426,6 +444,7 @@ final class Ast {
                 return str;
             default: assert (0, text(type));
 
+            case Type.nothing: return "(nothing)";
             case Type.real_: case Type.float_: case Type.double_:
                 return to!string(real_val);
             case Type.int_: case Type.uint_:
@@ -455,6 +474,15 @@ final class Ast {
                 return format("%s", ti_type);
             case Type.type:
                 return format_type(values.typedata);
+            case Type.cast_:
+                return format("cast(%s)%s",
+                        (values.bin.lhs.type == Type.nothing
+                         ? "" : to!string(values.bin.lhs)),
+                        values.bin.rhs);
+            case Type.vardecl:
+                return format("%s %s;", values.bin.lhs, values.bin.rhs);
+            case Type.id_list:
+                return format("%(%s, %)", values.id_list.map!(a => a.str)());
         }
     }
 }
@@ -462,7 +490,7 @@ final class Ast {
 string format_type(TypeData td) {
     switch (td.mod.type) {
         default: assert (0);
-        case TypeMod.Type.none: return format("%s", td.ast);
+        case TypeMod.Type.nothing: return format("%s", td.ast);
         case TypeMod.Type.pointer: return format("%s*", td.ast);
         case TypeMod.Type.array: return format("%s[]", td.ast);
         case TypeMod.Type.slicy: return format("%s[%s]", td.ast, td.mod.ast);

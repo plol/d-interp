@@ -195,3 +195,6 @@ IR if_(IR if_part, IR then_part, IR else_part) {
 IR while_(IR cond, IR body_) {
     return new IR(IR.Type.while_, cond, body_);
 }
+IR nothing() {
+    return new IR(IR.Type.nothing);
+}

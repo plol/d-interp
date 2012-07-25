@@ -3,7 +3,9 @@ module internal.ast2ir;
 import std.stdio, std.conv;
 
 import internal.ast, internal.ir;
+import internal.typeinfo;
 import internal.ctenv;
+import lexer;
 
 IR toIR(Ast ast, CTEnv env) {
 
@@ -13,6 +15,12 @@ IR toIR(Ast ast, CTEnv env) {
 
     switch (ast.type) {
         default: assert (0);
+        case Ast.Type.vardecl:
+                 declare_vars(env, ast.bin.lhs, ast.bin.rhs.id_list);
+                 return null;
+
+
+        case Ast.Type.nothing: return ir.nothing();
         case Ast.Type.if_: return ir.if_(
                                ast.if_.if_part.toIR(env),
                                ast.if_.then_part.toIR(env),
@@ -48,6 +56,20 @@ IR toIR(Ast ast, CTEnv env) {
                                  ast.binop.lhs.toIR(env),
                                  ast.binop.rhs.toIR(env));
     }
+}
+
+void declare_vars(CTEnv env, Ast type, Token[] ids) {
+    auto ti = ti_from_ast(env, type);
+    foreach (id; ids) {
+        env.declare(ti, id.str);
+    }
+}
+
+TI ti_from_ast(CTEnv env, Ast type) {
+    assert (type.typedata.mod.type == TypeMod.Type.nothing);
+    auto real_type = type.typedata.ast;
+    assert (real_type.type == Ast.Type.basic_type);
+    return env.get_basic_ti(real_type.ti_type);
 }
 
 string opfuncname(string op) {

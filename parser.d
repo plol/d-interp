@@ -364,14 +364,14 @@ static this() {
         return ast(Ast.Type.sequence, [ts[0].result]);
     };
     reduction_table["Stmt"] = (P.StackItem[] ts) {
-        if (ts.length == 1) {
-            assert (ts[0].terminal);
+        if (ts.length == 1 && ts[0].terminal) {
             return ast(Ast.Type.nothing, ts[0].token.loc);
-        }
-        if (ts.length == 2) {
+        } else if (ts.length == 1) {
+            return ts[0].result;
+        } else if (ts.length == 2) {
             return ast(Ast.Type.statement, ts[0].result);
         }
-        return ts[0].result;
+        assert (0);
     };
     reduction_table["While"] = (P.StackItem[] ts) {
         return ast(Ast.Type.while_, ts[0].token.loc, ts[1].result, ts[2].result);
@@ -507,6 +507,48 @@ static this() {
     reduction_table["BasicType"] = (P.StackItem[] ts) {
         return ast(Ast.Type.basic_type, ts[0].token.loc,
                 ti_type_from_tok(ts[0].token.tok));
+    };
+    reduction_table["CastExpr"] = (P.StackItem[] ts) {
+        if (ts.length == 4) {
+            return ast(Ast.Type.cast_, ts[0].token.loc, ts[3].result);
+        } else if (ts.length == 5) {
+            return ast(Ast.Type.cast_, ts[0].token.loc,
+                    ts[2].result, ts[4].result);
+        } else {
+            assert (0);
+        }
+    };
+    reduction_table["CastQual"] = (P.StackItem[] ts) {
+        Ast ret = ast(Ast.Type.nothing);
+        foreach (t; ts) {
+            ret = ast(Ast.Type.type, t.token.loc,
+                    get_typemod_type(t.token.tok),
+                    ret);
+        }
+        return ret;
+    };
+
+    reduction_table["ComIdList"] = (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ast(Ast.Type.id_list, ts[0].token.loc, [ts[0].token]);
+        } else {
+            ts[0].result.id_list ~= ts[2].token;
+            return ts[0].result;
+        }
+    };
+
+    reduction_table["Decl"] = (P.StackItem[] ts) {
+        if (ts.length == 2) {
+            assert (0);
+    //rule!Tok("Decl", "StorageClasses", "Decl"),
+        } else if (ts[1].terminal) {
+            assert (0);
+    //rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionBody"),
+    //rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionAttributes", "FunctionBody"),
+        } else {
+            return ast(Ast.Type.vardecl, ts[1].result.loc,
+                    ts[0].result, ts[1].result);
+        }
     };
 }
 

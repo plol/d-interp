@@ -479,7 +479,7 @@ struct Lexer {
 
     this() @disable;
 
-    this(string s) {
+    this(string s, string filename="") {
         feed(s);
     }
 
