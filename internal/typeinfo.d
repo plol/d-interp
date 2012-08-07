@@ -57,8 +57,11 @@ struct TI {
     }
 
     enum Type {
-        unresolved = 0,
-        void_ = 1,
+        unresolved,
+        error,
+        overload_set,
+
+        void_ = 99,
 
         bool_ = 100,
 
@@ -107,6 +110,8 @@ struct TI {
         builtin_delegate,
     }
     static TI void_ = TI(Type.void_);
+    static TI error = TI(Type.error);
+    static TI overload_set = TI(Type.overload_set);
 
     Type type = Type.unresolved;
     TypeInfoUnion typeinfo;
@@ -117,6 +122,11 @@ struct TI {
     ref TI first() @property { return ext_data[0]; }
     ref TI second() @property { return ext_data[1]; }
     TI[] operands() @property { return ext_data[1 .. $]; }
+
+    this(Type t, TI[] e) {
+        type = t;
+        ext_data = e;
+    }
 
     bool opEquals(TI other) {
         return type == other.type

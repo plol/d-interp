@@ -78,7 +78,11 @@ auto mul(T, U)(T t, U u) {
     return t * u;
 }
 
-void main() {
+void heh_crash() {
+    assert (0);
+}
+
+void main(string[] args) {
     auto ct_env = new CTEnv();
 
     int[int] bro;
@@ -90,24 +94,28 @@ void main() {
 
     ct_env.aadeclare("myaa", bro);
 
-    //foreach (T; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
-    //            int, uint, long, ulong, float, double, real)) {
+    foreach (T; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
+                int, uint, long, ulong, float, double, real)) {
     //    foreach (U; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
     //                int, uint, long, ulong, float, double, real)) {
-    //        ct_env.funcdeclare!(add!(T, U))("$add");
+        alias T U;
+            ct_env.builtin_func_declare!(add!(T, U))("$add");
     //        ct_env.funcdeclare!(sub!(T, U))("$sub");
     //        ct_env.funcdeclare!(div!(T, U))("$div");
     //        ct_env.funcdeclare!(mul!(T, U))("$mul");
     //    }
-    //}
-    ct_env.funcdeclare!lt_int("$lt");
-    ct_env.funcdeclare!cast_int_bool("$cast_int_bool");
-    ct_env.funcdeclare!cast_int_int_aa_p_void_p("$cast_int_int_aa_p_void_p");
-    ct_env.funcdeclare!cast_int_int_aa_void_p("$cast_int_int_aa_void_p");
-    ct_env.funcdeclare!not("$not");
-    ct_env.funcdeclare!aaGetX("$aaGetX");
-    ct_env.funcdeclare!aaGetRvalueX("$aaGetRvalueX");
-    ct_env.funcdeclare!cast_void_p_int_p("$cast_void_p_int_p");
+    }
+    ct_env.builtin_func_declare!lt_int("$lt");
+    ct_env.builtin_func_declare!cast_int_bool("$cast_int_bool");
+    ct_env.builtin_func_declare!cast_int_int_aa_p_void_p("$cast_int_int_aa_p_void_p");
+    ct_env.builtin_func_declare!cast_int_int_aa_void_p("$cast_int_int_aa_void_p");
+    ct_env.builtin_func_declare!not("$not");
+    ct_env.builtin_func_declare!aaGetX("$aaGetX");
+    ct_env.builtin_func_declare!aaGetRvalueX("$aaGetRvalueX");
+    ct_env.builtin_func_declare!cast_void_p_int_p("$cast_void_p_int_p");
+    ct_env.builtin_func_declare!(writeln!string)("writeln");
+    ct_env.builtin_func_declare!(writeln!(string, int))("writeln");
+    ct_env.builtin_func_declare!(heh_crash)("heh_crash");
 
 //    // while (a < 10)
 //    //     a = a + 1;
@@ -199,47 +207,132 @@ void main() {
         f.writeln("state ", i, ":\n", state);
     }
 
-    while (true) {
-        if (p.stack.empty) {
-            write("D > ");
-        } else {
-            write("..> ");
-        }
-        auto input = readln();
+    if (args.length == 1) {
+        while (true) {
+            if (p.stack.empty) {
+                write("D > ");
+            } else {
+                write("..> ");
+            }
+            auto input = readln();
 
-        if (input.empty) {
-            writeln();
+            if (input.empty) {
+                writeln();
+                break;
+            }
+
+            if (input == "__env\n") {
+                writeln(ct_env.get_runtime_env().vars);
+                continue;
+            }
+
+            run_code(p, ct_env, "<stdin>", input);
+        }
+    } else if (args[1] == "--test") {
+        writeln("test 1:");
+        run_code(p, ct_env, "<test>", q{
+                void foo(int x) {
+                    writeln("x = ", x);
+                    void bar() {
+                        writeln("x = ", x);
+                    }
+                    bar();
+                    x = x + 1;
+                    bar();
+                }
+
+                foo(12);
+                writeln("done");
+                });
+        writeln("test 2:");
+        run_code(p, ct_env, "<test>", q{
+                void foo2(int x) {
+                    int i;
+                    while (i < x) {
+                        writeln("i = ", i);
+                        i = i + 1;
+                        if (i < 377) {
+                            
+                        } else {
+                            heh_crash();
+                        }
+                    }
+                }
+
+                foo2(10000);
+                writeln("done");
+                });
+    }
+}
+
+void print_throwable(Throwable t) {
+    writefln("%s@%s(%s): %s", t.classinfo.name, t.file, t.line, t.msg);
+    bool lulz;
+    ulong x;
+    foreach (i, s; t.info) {
+        if (i < 600) {
+            writeln(s);
+        } else {
+            lulz = true;
+            x = i;
+        }
+    }
+    if (lulz) {
+        writefln("... (%s rows total)", x);
+    }
+}
+
+void run_code(ref P.Parser p, ref CTEnv ct_env, string file, string input) {
+    auto lx = Lexer(input, file);
+
+    if (lx.empty) return;
+
+    //writeln(lx);
+
+    foreach (tok; lx) {
+        p.feed(tok);
+    }
+    p.feed(Token(Loc(-1, ""), Tok.eof, ""));
+    if (p.results.empty) {
+        return;
+    }
+    //writefln("%(%s\n%)", p.results); p.results = []; continue;
+
+    Val val;
+
+    Cont cont;
+    cont.succeed = (Val v, FailCont) {
+        val = v;
+    };
+    cont.fail = (InterpretedException ex) {
+        throw ex;
+    };
+
+    foreach (r; p.results) {
+        auto ir = toIR(r, ct_env);
+        if (ir is null) continue;
+
+        try {
+            resolve(ir, ct_env);
+            ct_env.resolve_functions();
+        } catch (SemanticFault f) {
+            writeln("error ", r.loc, ": ", f.msg);
             break;
         }
 
-        auto lx = Lexer(input, "<stdin>");
-        
-        if (lx.empty) continue;
-
-        //writeln(lx);
-
-        foreach (tok; lx) {
-            p.feed(tok);
+        auto env = ct_env.get_runtime_env();
+        try {
+            ir.interpret(env, cont);
+        } catch (Throwable t) {
+            print_throwable(t);
+            break;
         }
-        p.feed(Token(Loc(-1, ""), Tok.eof, ""));
-        if (p.results.empty) {
-            continue;
-        }
-        //writefln("%(%s\n%)", p.results); p.results = []; continue;
 
-        foreach (r; p.results) {
-            auto ir = toIR(r, ct_env);
-            if (ir is null) continue;
-            resolve(ir, ct_env);
-            auto env = ct_env.get_runtime_env();
-            //try {
-                auto val = interpret(ir, env);
-                if (ir.ti.type != TI.Type.void_) {
-                    writeln(val.toString(ir.ti));
-                }
-            //} catch......
-            ct_env.assimilate(env);
+        if (ir.ti.type != TI.Type.void_) {
+            writeln(val.toString(ir.ti));
         }
-        p.results = [];
+        ct_env.assimilate(env);
     }
+    p.results = [];
 }
+

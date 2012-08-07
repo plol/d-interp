@@ -3,7 +3,36 @@ module internal.typecheck;
 import std.conv, std.exception, std.stdio, std.algorithm, std.range;
 import internal.typeinfo, internal.ctenv, internal.ir, internal.val;
 
-TI resolve(IR ir, CTEnv env) {
+import stuff;
+
+class SemanticFault : Exception {
+    this(string s) {
+        super(s);
+    }
+}
+
+string lotsa_spaces = "                                                        "
+~"                                                                             "
+~"                                                                             "
+~"                                                                             "
+~"                                                                             "
+~"                                                       "; // True code poetry;
+int depth = 0;
+
+bool trace = false;
+
+void pre_resolve(IR ir) {
+    if (!trace) return;
+    writeln(lotsa_spaces[0 .. depth], "pre  resolve: ", ir);
+    depth += 2;
+}
+void post_resolve(IR ir) {
+    if (!trace) return;
+    depth -= 2;
+    writeln(lotsa_spaces[0 .. depth], "post resolve: ", ir);
+}
+
+TI resolve(ref IR ir, CTEnv env) {
     immutable table = [
         IR.Type.if_: &resolve_if,
         IR.Type.while_: &resolve_while,
@@ -15,40 +44,43 @@ TI resolve(IR ir, CTEnv env) {
         IR.Type.addressof: &resolve_addressof,
         IR.Type.deref: &resolve_deref,
         IR.Type.id: &resolve_id,
+        IR.Type.overload_set: &resolve_overload_set,
+        IR.Type.local_function_create: &resolve_local_function_create,
         ];
 
     if (ir is null) {
-        return TI.void_;
+        assert (0);
     }
     if (ir.resolved) {
         return ir.ti;
     }
     if (ir.type in table) {
+        pre_resolve(ir);
         auto ret = table[ir.type](ir, env);
         ir.ti = ret;
         ir.resolved = true;
+        post_resolve(ir);
         return ret;
     }
-    assert (0, "wtf bro :D");
+    assert (0, "wtf bro :D " ~ text(ir.type));
 }
 
-TI resolve_typeid(IR ir, CTEnv env) {
+TI resolve_typeid(ref IR ir, CTEnv env) {
 
     auto next_ti = ir.next.resolve(env);
     //writeln("NEXT TI IN TYPEID = ", next_ti);
 
-    // swap type to constant :-)
-    ir.type = IR.Type.constant;
-    ir.val = Val(next_ti.primitive);
 
     TI ti;
     ti.type = TI.Type.class_;
     ti.primitive = typeid(typeid(int)); // BUG
 
+    ir = new IR(IR.Type.constant, ti, Val(next_ti.primitive));
+
     return ti;
 }
 
-TI resolve_addressof(IR ir, CTEnv env) {
+TI resolve_addressof(ref IR ir, CTEnv env) {
     auto next_ti = ir.next.resolve(env);
 
     TI ti;
@@ -62,7 +94,7 @@ TI resolve_addressof(IR ir, CTEnv env) {
     return ti;
 }
 
-TI resolve_if(IR ir, CTEnv env) {
+TI resolve_if(ref IR ir, CTEnv env) {
 
     auto if_part_type = ir.if_.if_part.resolve(env);
 
@@ -74,7 +106,7 @@ TI resolve_if(IR ir, CTEnv env) {
     return TI.void_;
 }
 
-TI resolve_while(IR ir, CTEnv env) {
+TI resolve_while(ref IR ir, CTEnv env) {
 
     auto condition_type = ir.while_.condition.resolve(env);
 
@@ -85,50 +117,36 @@ TI resolve_while(IR ir, CTEnv env) {
     return TI.void_;
 }
 
-TI resolve_application(IR ir, CTEnv env) {
-
-    // TODO:
-    // We need to find the overloaded function here, or something.
-    // otherwise we can't really type check.
-
-    // we assume a unary overload set here,
-    // so direct type checking :-)
-
-    //TI resolve_in_env(IR ir) {
-    //    return resolve(ir, env);
-    //}
+TI resolve_application(ref IR ir, CTEnv env) {
 
     TI[] arg_types; // = ir.application.operands.map!resolve_in_env().array();
-    foreach (a; ir.application.operands) {
+    foreach (ref a; ir.application.operands) {
         arg_types ~= resolve(a, env);
-    }
-
-    ir.application.operator.resolve(env);
-
-    auto op = ir.application.operator;
-    if (op.type == IR.Type.function_) {
-        // swap type to constant, DO OVERLOADING RESOLUTION, ifti? D:
-        ir.application.operator =
-            resolve_overload_set(env.get_function(op.name), arg_types);
-    } else if (op.type == IR.Type.variable) {
-        // do nothing i guess
-        assert (0);
-    } else {
-        assert (0, "can only call functions and variables (?)");
     }
 
     auto func_type = ir.application.operator.resolve(env);
 
+    if (func_type.type == TI.Type.overload_set) {
+        ir.application.operator = overload_set_match(
+                ir.application.operator.overload_set.set, arg_types);
+        func_type = ir.application.operator.resolve(env);
+    }
+
     auto assumed_arg_types = func_type.operands;
 
-    enforce(arg_types.length == assumed_arg_types.length);
+    if (arg_types.length != assumed_arg_types.length) {
+        throw new SemanticFault(text(
+                    "Wrong number of arguments for ",
+                    ir.application.operator.get_name(), "\n",
+                    "got ", arg_types.length, ", expected ",
+                    assumed_arg_types.length));
+    }
 
     foreach (i; 0 .. assumed_arg_types.length) {
-        if (assumed_arg_types[i].type == TI.Type.pointer
-                && assumed_arg_types[i].next.type == TI.Type.void_) {
+        if (arg_types[i].implicitly_converts_to(assumed_arg_types[i])) {
             continue;
         }
-        enforce (arg_types[i] == assumed_arg_types[i],
+        throw new SemanticFault(
                 text("not a match in arg ", i, ":\n",
                     "got:      ", arg_types[i], "\n",
                     "expected: ", assumed_arg_types[i]));
@@ -137,8 +155,25 @@ TI resolve_application(IR ir, CTEnv env) {
 
     return func_type.next;
 }
+bool implicitly_converts_to(TI a, TI b) {
+    if (b.type == TI.Type.pointer
+            && b.next.type == TI.Type.void_) {
+        return a.type == TI.Type.pointer;
+    }
+    switch (b.type) {
+        default: return a == b;
 
-IR resolve_overload_set(IR[] functions, TI[] arg_types) {
+        case TI.Type.int_:
+            switch (a.type) {
+                default: return false;
+                case TI.Type.int_, TI.Type.short_, TI.Type.byte_,
+                     TI.Type.bool_:
+                         return true;
+            }
+    }
+}
+
+IR overload_set_match(IR[] functions, TI[] arg_types) {
     if (functions.length == 1) {
         return functions[0];
     } else {
@@ -148,21 +183,23 @@ IR resolve_overload_set(IR[] functions, TI[] arg_types) {
                 return func;
             }
         }
-        assert (0, "doesnt do best match only perfect match :(");
+        throw new SemanticFault("doesnt do best match only perfect match :(");
     }
 }
 
-TI resolve_variable(IR ir, CTEnv env) {
-    return env.typeof_(ir.name);
+TI resolve_variable(ref IR ir, CTEnv env) {
+    return env.typeof_(ir.variable.name);
 }
-TI resolve_sequence(IR ir, CTEnv env) {
+
+TI resolve_sequence(ref IR ir, CTEnv env) {
     auto res = TI.void_;
-    foreach (e; ir.sequence) {
+    foreach (ref e; ir.sequence) {
         res = e.resolve(env);
     }
     return res;
-} 
-TI resolve_assignment(IR ir, CTEnv env) {
+}
+
+TI resolve_assignment(ref IR ir, CTEnv env) {
     auto lhs = ir.bin.lhs.resolve(env);
     auto rhs = ir.bin.rhs.resolve(env);
 
@@ -172,21 +209,23 @@ TI resolve_assignment(IR ir, CTEnv env) {
     return lhs;
 }
 
-TI resolve_deref(IR ir, CTEnv env) {
+TI resolve_deref(ref IR ir, CTEnv env) {
     auto next = ir.next.resolve(env);
     enforce(next.type == TI.Type.pointer);
     return next.next;
 }
 
-TI resolve_id(IR ir, CTEnv env) {
-    IR res = env.lookup(ir.name);
-
-    assert (res.type == IR.Type.function_
-            || res.type == IR.Type.variable,
-            text(ir.type));
-    ir.type = res.type;
-
-    assert (res.resolved);
-    return res.ti;
+TI resolve_id(ref IR ir, CTEnv env) {
+    IR res = env.lookup(ir.id.name);
+    ir = res;
+    return ir.resolve(env);
 }
 
+TI resolve_overload_set(ref IR ir, CTEnv env) {
+    return TI.overload_set;
+}
+
+TI resolve_local_function_create(ref IR ir, CTEnv env) {
+    ir.function_.body_.resolve(ir.function_.env);
+    return TI.void_;
+}

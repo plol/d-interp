@@ -7,6 +7,8 @@ import std.stdio;
 import std.typetuple;
 
 import internal.typeinfo;
+import internal.function_;
+import internal.ir;
 
 struct Val {
     union PossibleValues {
@@ -39,6 +41,8 @@ struct Val {
         void* assocarray = void;
         Val delegate(Val[]) builtin_delegate;
         Val function(Val[]) builtin_function;
+        Delegate delegate_;
+        Function func;
     }
 
     static enum Val void_ = Val();
@@ -57,6 +61,9 @@ struct Val {
     this(float f) { float_val = f; }
     this(double f) { double_val = f; }
     this(real f) { real_val = f; }
+    this(Delegate d) { tagged_union.delegate_ = d; }
+    this(Function d) { tagged_union.func = d; }
+    this(const void[] a) { tagged_union.array = cast(void[])a; }
 
     string toString() const {
         return "Val()";
@@ -65,7 +72,7 @@ struct Val {
         auto type = ti.type;
         switch (type) {
             default: return text("Val(", type, ")");
-            case TI.Type.void_: return "no value produced";
+            case TI.Type.void_: return "Val(void)";
             foreach (T; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
                         int, uint, long, ulong, float, double, real)) {
                 mixin ("case TI.Type."~T.stringof~"_:
@@ -73,7 +80,17 @@ struct Val {
             }
             case TI.Type.assocarray:
                                 return to!string(*cast(int[int]*)&pointer);
+            case TI.Type.array:
+                if (ti.next.type == TI.Type.char_) {
+                    return "\""~cast(string)tagged_union.array~"\"";
+                } else {
+                    return format_array(tagged_union.array, ti.next);
+                }
         }
     }
 }
 
+
+string format_array(void[] array, TI elementtype) {
+    assert (0);
+}

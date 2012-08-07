@@ -6,6 +6,10 @@ import internal.val;
 import internal.typeinfo;
 import internal.env;
 import internal.ctenv;
+import internal.function_;
+import stuff;
+
+
 
 final class IR {
     enum Type {
@@ -14,9 +18,16 @@ final class IR {
         switch_,
         // etc
 
-        variable,
         function_,
+        builtin_function,
+
+        local_function_create,
+        delegate_instantiation,
+
+        variable,
         id,
+
+        overload_set,
 
         sequence,
 
@@ -47,21 +58,48 @@ final class IR {
         IR operator;
         IR[] operands;
     }
+    static struct Variable {
+        string name;
+        Val val;
+    }
+    static struct ID {
+        string name;
+    }
+    static struct Constant {
+        Val val;
+    }
+    static struct OverloadSet {
+        string name;
+        IR[] set;
+    }
+    static struct BuiltinFunction {
+        string name;
+        Val func;
+    }
 
     union Data {
         If if_;
         While while_;
         Bin bin;
         Application application;
-        Val val;
-        string name;
+        Constant constant;
+        OverloadSet overload_set;
+        ID id;
+
+        Function function_;
+        Variable variable;
+
+        BuiltinFunction builtin_function;
+
         IR[] sequence;
         IR next;
     }
 
     Type type;
+
     TI ti;
     bool resolved;
+
     Data data;
     alias data this;
 
@@ -74,22 +112,15 @@ final class IR {
             assert (0);
         }
     }
-    this(Type t, Val val1) {
-        type = t;
-        assert (0);
-    }
     this(Type t, TI ti_, Val val1) {
         type = t;
         ti = ti_;
         resolved = true;
         if (t == Type.constant) {
-            val = val1;
+            data.constant = Constant(val1);
         } else {
-            assert (0);
+            assert (0, text(t));
         }
-    }
-    this(Type t, Val val1, Val val2) {
-        assert (0);
     }
     this(Type t, IR ir1) {
         type = t;
@@ -97,11 +128,9 @@ final class IR {
             next = ir1;
         } else if (t == Type.addressof) {
             next = ir1;
-        } else if (t == Type.typeid_) {
-            next = ir1;
         } else if (t == Type.deref) {
             next = ir1;
-        } else{
+        } else {
             assert (0);
         }
     }
@@ -126,12 +155,10 @@ final class IR {
     }
     this(Type t, string s) {
         type = t;
-        if (t == Type.variable) {
-            name = s;
-        } else if (t == Type.function_) {
-            name = s;
-        } else if (t == Type.id) {
-            name = s;
+        if (t == Type.id) {
+            data.id = ID(s);
+        } else if (t == Type.overload_set) {
+            data.overload_set = OverloadSet(s, []);
         } else {
             assert (0, to!string(t));
         }
@@ -152,18 +179,93 @@ final class IR {
             assert (0);
         }
     }
+    this(Type t, TI ti_, string name, Val val) {
+        type = t;
+        ti = ti_;
+        resolved = true;
+        if (t == Type.variable) {
+            variable = Variable(name, val);
+        } else if (t == Type.builtin_function) {
+            builtin_function = BuiltinFunction(name, val);
+        } else {
+            assert (0, text(t));
+        }
+    }
+    this(Type t, TI ti_, Function f) {
+        type = t;
+        ti = ti_;
+        if (t == Type.function_) {
+            data.function_ = f;
+        } else if (t == Type.delegate_instantiation) { 
+            data.function_ = f;
+        } else { 
+            assert (0);
+        }
+    }
+
+    this(Type t, Function f) {
+        type = t;
+        if (t == Type.local_function_create) {
+            data.function_ = f;
+        } else {
+            assert (0);
+        }
+    }
+
+    string get_name() {
+        switch (type) {
+            default: assert (0);
+            case Type.id: return data.id.name;
+            case Type.variable: return data.variable.name;
+            case Type.function_: return data.function_.name;
+            case Type.builtin_function: return data.builtin_function.name;
+            case Type.overload_set: return data.overload_set.name;
+        }
+    }
+
+    string toString() {
+        switch (type) {
+            case Type.if_:
+                return text("if (", data.if_.if_part, ") { ", data.if_.then_part,
+                        " } else { ", data.if_.else_part, " }");
+            case Type.while_: 
+                return text("while (", data.while_.condition, ") { ",
+                        data.while_.body_, "} ");
+            //case Type.switch_: 
+            case Type.function_: return format("function[%s(%(%s, %)) %s]",
+                                         get_name(),
+                                         data.function_.params,
+                                         data.function_.body_);
+            case Type.builtin_function:
+                return format("builtin[%s]", get_name());
+            case Type.variable: return format("var[%s]",get_name());
+            case Type.id: return format("id[%s]",get_name());
+            case Type.overload_set: return format("overload[%s]", get_name());
+            case Type.sequence: return format("{ %(%s; %) }", data.sequence);
+            case Type.constant: return data.constant.val.toString(ti);
+            case Type.application: return format("%s(%(%s, %))",
+                                           data.application.operator,
+                                           data.application.operands);
+            case Type.assignment: return format("%s = %s",
+                                          data.bin.lhs, data.bin.rhs);
+            //case Type.typeid_: 
+            //case Type.typeof_: 
+            //case Type.addressof: 
+            //case Type.deref:
+            case Type.nothing: return "(nothing)";
+            case Type.delegate_instantiation:
+                               return format("delegate[%s]", data.function_);
+            case Type.local_function_create:
+                               return format("local_func[%s]", data.function_);
+            default: assert (0, text(type));
+        }
+    }
 }
 
 IR call(IR f, IR[] args...) {
     return new IR(IR.Type.application, f, args.dup);
 }
 
-IR var(string n) {
-    return new IR(IR.Type.variable, n);
-}
-IR fun(string n) {
-    return new IR(IR.Type.function_, n);
-}
 IR id(string n) {
     return new IR(IR.Type.id, n);
 }

@@ -378,7 +378,7 @@ static this() {
     };
     reduction_table["CurlStmtList"] = (P.StackItem[] ts) {
         if (ts.length == 2) {
-            return ast(Ast.Type.sequence, ts[0].token.loc, cast(Ast[])[]);
+            return ast(Ast.Type.sequence, ts[0].token.loc);
         }  else {
             return ts[1].result;
         }
@@ -452,8 +452,13 @@ static this() {
             return ast(Ast.Type.member_lookup, ts[0].result.loc,
                     ts[0].result, ts[2].token.str);
         }
-        return ast(Ast.Type.postfix, ts[0].result.loc,
-                ts[0].result, ts[1].result);
+        if (ts[1].result.type == Ast.Type.arg_list) {
+            return ast(Ast.Type.application, ts[0].result.loc,
+                    ts[0].result, ts[1].result);
+        } else {
+            return ast(Ast.Type.postfix, ts[0].result.loc,
+                    ts[0].result, ts[1].result);
+        }
     };
     reduction_table["CondExpr"] = (P.StackItem[] ts) {
         if (ts.length == 1) {
@@ -542,12 +547,56 @@ static this() {
             assert (0);
     //rule!Tok("Decl", "StorageClasses", "Decl"),
         } else if (ts[1].terminal) {
-            assert (0);
-    //rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionBody"),
+            if (ts.length == 5) assert (0);
     //rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionAttributes", "FunctionBody"),
+            return ast(Ast.Type.funcdef, ts[0].result.loc,
+                    ts[0].result, ts[1].token.str,
+                    ts[2].result, ts[3].result);
         } else {
             return ast(Ast.Type.vardecl, ts[1].result.loc,
                     ts[0].result, ts[1].result);
+        }
+    };
+
+    reduction_table["Parameters"] = (P.StackItem[] ts) {
+        if (ts.length == 3) {
+            return ts[1].result;
+        }
+        return ast(Ast.Type.parameter_list, ts[0].token.loc);
+    };
+    reduction_table["ParameterList"] = (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ast(Ast.Type.parameter_list, ts[0].result.loc,
+                    [ts[0].result.parameter]);
+        }
+        ts[0].result.parameter_list.params ~= ts[2].result.parameter;
+        return ts[0].result;
+    };
+    reduction_table["Parameter"] = (P.StackItem[] ts) {
+        return ast(Ast.Type.parameter, ts[0].result.loc,
+                ts[0].result, ts.length == 1 ? "" : ts[1].token.str);
+    };
+    reduction_table["ArgList"] = (P.StackItem[] ts) {
+        if (ts.length == 2) {
+            return ast(Ast.Type.arg_list, ts[0].token.loc);
+        }
+        return ast(Ast.Type.arg_list, ts[0].token.loc, ts[1].result);
+    };
+    reduction_table["ComExprList"] = (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ast(Ast.Type.com_expr_list, ts[0].result.loc,
+                    [ts[0].result]);
+        }
+        ts[0].result.com_expr_list ~= ts[2].result;
+        return ts[0].result;
+    };
+    reduction_table["If"] = (P.StackItem[] ts) {
+        if (ts.length == 3) {
+            return ast(Ast.Type.if_, ts[0].token.loc,
+                    ts[1].result, ts[2].result, ast(Ast.Type.nothing));
+        } else {
+            return ast(Ast.Type.if_, ts[0].token.loc,
+                    ts[1].result, ts[2].result, ts[4].result);
         }
     };
 }

@@ -128,7 +128,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
 
         void reduce(Item item) {
             auto to_remove = stack[$ - item.rule.length .. $];
-            writeln("reducing ", to_remove, " to ", item.orig);
+            //writeln("reducing ", to_remove, " to ", item.orig);
             Result result;
             if (item.orig in reduction_table) {
                 result = reduction_table[item.orig](to_remove);

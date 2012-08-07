@@ -197,6 +197,7 @@ enum Tok {
 struct Loc {
     int line;
     string file;
+    string toString() { return text(file,"(",line,")"); }
 }
 struct Token {
     Loc loc;
@@ -480,6 +481,7 @@ struct Lexer {
     this() @disable;
 
     this(string s, string filename="") {
+        file = filename;
         feed(s);
     }
 

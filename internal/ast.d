@@ -61,6 +61,10 @@ final class Ast {
 
         application,
 
+        arg_list,
+
+        com_expr_list,
+
         condexpr,
 
         cast_,
@@ -80,6 +84,9 @@ final class Ast {
 
         member_lookup,
         module_lookup,
+
+        parameter,
+        parameter_list,
 
         bool_,
         dchar_,
@@ -121,6 +128,19 @@ final class Ast {
     static struct Bin {
         Ast lhs, rhs;
     }
+    static struct FuncDef {
+        Ast return_type;
+        string name;
+        Ast params;
+        Ast body_;
+    }
+    static struct Parameter {
+        Ast type;
+        string name;
+    }
+    static struct ParameterList {
+        Parameter[] params;
+    }
 
     union PossibleValues {
         string str;
@@ -133,6 +153,8 @@ final class Ast {
 
         Ast next;
         Ast[] sequence;
+        Ast[] arg_list;
+        Ast[] com_expr_list;
         Token[] id_list;
         While while_;
         If if_;
@@ -142,6 +164,9 @@ final class Ast {
         TI.Type ti_type;
         TypeData typedata;
         TypeMod type_mod;
+        FuncDef funcdef;
+        Parameter parameter;
+        ParameterList parameter_list;
     }
 
     Type type;
@@ -222,8 +247,15 @@ final class Ast {
 
     this(Type t) { this(t, Loc(0, "unspecified")); }
     this(Type t, Loc l) {
+        type = t;
         loc = l;
         if (t == Type.nothing) {
+        } else if (t == Type.parameter_list) {
+            values.parameter_list = ParameterList([]);
+        } else if (t == Type.sequence) {
+            values.sequence = [];
+        } else if (t == Type.arg_list) {
+            values.arg_list = [];
         } else {
             assert (0);
         }
@@ -236,6 +268,10 @@ final class Ast {
         type = t;
         if (t == Type.sequence) {
             values.sequence = w;
+        } else if (t == Type.com_expr_list) {
+            values.com_expr_list = w;
+        } else if (t == Type.arg_list) {
+            values.com_expr_list = w;
         } else {
             assert (0);
         }
@@ -255,6 +291,8 @@ final class Ast {
             next = n;
         } else if (t == Type.type) {
             typedata = TypeData(TypeMod(TypeMod.Type.nothing), n);
+        } else if (t == Type.arg_list) {
+            arg_list = n.com_expr_list;
         } else {
             assert (0);
         }
@@ -274,8 +312,10 @@ final class Ast {
             values.bin = Bin(n1, n2);
         } else if (t == Type.cast_) {
             values.bin = Bin(n1, n2);
+        } else if (t == Type.application) {
+            values.bin = Bin(n1, n2);
         } else {
-            assert (0);
+            assert (0, text(t));
         }
     }
     this(Type t, Loc l, Ast n1, Ast n2, Ast n3) {
@@ -303,6 +343,27 @@ final class Ast {
         type = t;
         if (t == Type.member_lookup) {
             values.lookup = Lookup(n1, s);
+        } else if (t == Type.parameter) {
+            values.parameter = Parameter(n1, s);
+        } else {
+            assert (0);
+        }
+    }
+
+    this(Type t, Loc l, Ast n1, string s, Ast n2, Ast n3) {
+        loc = l;
+        type = t;
+        if (t == Type.funcdef) {
+            values.funcdef = FuncDef(n1, s, n2, n3);
+        } else {
+            assert (0);
+        }
+    }
+    this(Type t, Loc l, Parameter[] ps) {
+        type = t;
+        loc = l;
+        if (t == Type.parameter_list) {
+            parameter_list = ParameterList(ps);
         } else {
             assert (0);
         }
@@ -401,6 +462,16 @@ final class Ast {
     private void parse_num(string s) {
         bool L, u, f, dot;
 
+        uint radix = 10;
+
+        if (s.length > 1 && s.startsWith("0")) {
+            switch (s[1]) {
+                default: assert (0);
+                case 'x': case 'X': radix = 16; break;
+                case 'b': case 'B': radix = 2; break;
+            }
+        }
+
         bool had_suffix = true;
         while (had_suffix) {
             switch (s.back) {
@@ -429,12 +500,16 @@ final class Ast {
             }
             real_val = to!real(s);
         } else {
+            if (radix != 10) {
+                s.popFront();
+                s.popFront();
+            }
             if (L) {
                 type = u ? Type.ulong_ : Type.long_;
             } else {
                 type = u ? Type.uint_ : Type.int_;
             }
-            ulong_val = to!ulong(s);
+            ulong_val = to!ulong(s, radix);
         }
     }
 
