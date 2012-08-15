@@ -5,16 +5,17 @@ import internal.ctenv;
 import internal.ir;
 import internal.typeinfo;
 import internal.bytecode;
+import internal.variable;
 
 import stuff;
 
 final class Function {
-    CTEnv ct_env;
+    CTEnv env;
 
     TI ti;
     bool static_;
     string name;
-    string[] params;
+    Variable[] params;
 
     IR body_;
     ByteCode[] bc;

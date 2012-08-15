@@ -7,6 +7,7 @@ import internal.typeinfo;
 import internal.env;
 import internal.ctenv;
 import internal.function_;
+import internal.variable;
 import stuff;
 
 
@@ -62,10 +63,6 @@ final class IR {
     static struct Application {
         IR operator;
         IR[] operands;
-    }
-    static struct Variable {
-        string name;
-        Val val;
     }
     static struct ID {
         string name;
@@ -218,7 +215,7 @@ final class IR {
         ti = ti_;
         resolved = true;
         if (t == Type.variable) {
-            variable = Variable(name, val);
+            variable = new Variable(name, val);
         } else if (t == Type.builtin_function) {
             builtin_function = BuiltinFunction(name, val);
         } else {

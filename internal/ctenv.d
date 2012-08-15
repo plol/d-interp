@@ -91,7 +91,7 @@ final class CTEnv {
         auto env = new Env;
 
         foreach (var_name, var_decl; vars) {
-            env.declare(var_name, var_decl.variable.val);
+            env.declare(var_name, var_decl.variable.global.init_val);
         }
 
         return env;
@@ -99,7 +99,7 @@ final class CTEnv {
 
     void assimilate(Env env) {
         foreach (name, val; env.vars) {
-            vars[name].variable.val = val;
+            vars[name].variable.global.init_val = val;
         }
         if (parent !is null) {
             parent.assimilate(env.parent);
