@@ -43,6 +43,11 @@ final class IR {
         addressof,
         deref,
 
+        return_,
+
+        var_decl,
+        var_init,
+
         nothing,
     }
     static struct If {
@@ -76,6 +81,14 @@ final class IR {
         string name;
         Val func;
     }
+    static struct VarInit {
+        TI ti;
+        string name;
+        IR initializer;
+    }
+    static struct VarDecl {
+        IR[] inits;
+    }
 
     union Data {
         If if_;
@@ -93,6 +106,8 @@ final class IR {
 
         IR[] sequence;
         IR next;
+        VarInit var_init;
+        VarDecl var_decl;
     }
 
     Type type;
@@ -122,6 +137,23 @@ final class IR {
             assert (0, text(t));
         }
     }
+    this(Type t, TI ti_, IR[] irs) {
+        type = t;
+        ti = ti_;
+        if (t == Type.var_decl) {
+            data.var_decl = VarDecl(irs);
+        } else {
+            assert (0, text(t));
+        }
+    }
+    this(Type t, string s, IR ir1) {
+        type = t;
+        if (t == Type.var_init) {
+            data.var_init = VarInit(TI.unresolved, s, ir1);
+        } else {
+            assert (0, text(t));
+        }
+    }
     this(Type t, IR ir1) {
         type = t;
         if (t == Type.typeid_) {
@@ -129,6 +161,8 @@ final class IR {
         } else if (t == Type.addressof) {
             next = ir1;
         } else if (t == Type.deref) {
+            next = ir1;
+        } else if (t == Type.return_) {
             next = ir1;
         } else {
             assert (0);
@@ -299,4 +333,7 @@ IR while_(IR cond, IR body_) {
 }
 IR nothing() {
     return new IR(IR.Type.nothing);
+}
+IR return_(IR retval) {
+    return new IR(IR.Type.return_, retval);
 }

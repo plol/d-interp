@@ -4,11 +4,12 @@ import internal.env;
 import internal.ctenv;
 import internal.ir;
 import internal.typeinfo;
+import internal.bytecode;
 
 import stuff;
 
 final class Function {
-    CTEnv env;
+    CTEnv ct_env;
 
     TI ti;
     bool static_;
@@ -16,9 +17,9 @@ final class Function {
     string[] params;
 
     IR body_;
+    ByteCode[] bc;
 
-    this(CTEnv ct_env, TI ti_, bool static__, string n, string[] ps, IR b) {
-        env = ct_env;
+    this(TI ti_, bool static__, string n, string[] ps, IR b) {
         ti = ti_;
         static_ = static__;
         name = n;

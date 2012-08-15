@@ -60,6 +60,7 @@ struct TI {
         unresolved,
         error,
         overload_set,
+        auto_,
 
         void_ = 99,
 
@@ -110,8 +111,10 @@ struct TI {
         builtin_delegate,
     }
     static TI void_ = TI(Type.void_);
+    static TI unresolved = TI(Type.unresolved);
     static TI error = TI(Type.error);
     static TI overload_set = TI(Type.overload_set);
+    static TI auto_ = TI(Type.auto_);
 
     Type type = Type.unresolved;
     TypeInfoUnion typeinfo;
@@ -119,6 +122,7 @@ struct TI {
 
     TI[] ext_data;
     ref TI next() @property { return ext_data[0]; }
+    TI next(TI new_val) @property { return ext_data[0] = new_val; }
     ref TI first() @property { return ext_data[0]; }
     ref TI second() @property { return ext_data[1]; }
     TI[] operands() @property { return ext_data[1 .. $]; }

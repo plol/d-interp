@@ -260,7 +260,6 @@ struct StupidUniq(R) {
         return r.empty;
     }
 }
-
 auto stupid_uniq(R)(R r) {
     return StupidUniq!R(r);
 }

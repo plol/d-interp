@@ -45,7 +45,9 @@ TI resolve(ref IR ir, CTEnv env) {
         IR.Type.deref: &resolve_deref,
         IR.Type.id: &resolve_id,
         IR.Type.overload_set: &resolve_overload_set,
-        IR.Type.local_function_create: &resolve_local_function_create,
+        IR.Type.return_: &resolve_return,
+        IR.Type.var_decl: &resolve_var_decl,
+        IR.Type.function_: &resolve_function,
         ];
 
     if (ir is null) {
@@ -225,7 +227,65 @@ TI resolve_overload_set(ref IR ir, CTEnv env) {
     return TI.overload_set;
 }
 
-TI resolve_local_function_create(ref IR ir, CTEnv env) {
-    ir.function_.body_.resolve(ir.function_.env);
+TI resolve_return(ref IR ir, CTEnv env) {
+    TI ret;
+    if (ir.next.type == IR.Type.nothing) {
+        ret = TI.void_;
+    } else {
+        ret = ir.next.resolve(env);
+    }
+
+    if (env.return_type.type == TI.Type.auto_) {
+        env.return_type = ret;
+    } else {
+        if (ret != env.return_type) {
+            throw new SemanticFault(text(
+                        "Conflicting types in return statement: ", ret,
+                        " (expected ", env.return_type, ")"));
+        }
+    }
+    return ret;
+}
+
+TI resolve_function(ref IR ir, CTEnv env) {
+    auto func = ir.function_;
+
+    assert (func.env is null);
+
+    auto new_env = env.extend(func.ti.operands, func.params);
+    new_env.return_type = func.ti.next;
+
+    func.body_.resolve(new_env);
+    func.env = new_env;
+
+    if (func.ti.next.type == TI.Type.auto_) {
+        func.ti.next = new_env.return_type;
+    }
+
+    env.func_declare(func);
+
     return TI.void_;
 }
+
+TI resolve_var_decl(ref IR ir, CTEnv env) {
+    foreach (var; ir.var_decl.inits) {
+        auto v = &var.var_init;
+        if (v.initializer.type == IR.Type.nothing) {
+            if (ir.ti.type == TI.Type.auto_) {
+                throw new SemanticFault(
+                        "Must have initializer for auto declaration");
+            }
+            continue;
+        }
+        v.ti = v.initializer.resolve(env);
+        if (ir.ti.type != TI.Type.auto_ && v.ti != ir.ti) {
+            throw new SemanticFault(text(
+                        "cannot initialize a ", ir.ti, " with a ", v.ti));
+        }
+        env.var_declare(v.ti, v.name);
+    }
+    return ir.ti;
+}
+
+
+

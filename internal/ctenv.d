@@ -6,6 +6,8 @@ import std.conv, std.array;
 import internal.typeinfo, internal.ir, internal.val, internal.env;
 import internal.typecheck, internal.function_;
 
+import internal.bcgen;
+
 final class CTEnv {
 
     CTEnv parent;
@@ -13,9 +15,14 @@ final class CTEnv {
     // AA of function name -> overload set  (????)
     IR[string] functions;
     IR[string] vars;
-    IR[string] local_funcs;
 
     TI[string] tis;
+
+    TI return_type;
+
+    bool global() @property {
+        return parent is null;
+    }
 
     ref TI typeof_(string var_name) {
         assert (0);
@@ -24,17 +31,16 @@ final class CTEnv {
     IR lookup(string name) {
         assert (!(name in functions && name in vars));
 
-        if (name in local_funcs) {
-            return local_funcs[name];
-        } else if (name in functions) {
+        if (name in functions) {
             return functions[name];
         } else if (name in vars) {
             return vars[name];
         }
         if (parent is null) {
             throw new SemanticFault(
-                    text(name, " not in env and no parent"));
+                    text("undefined identifier ", name));
         }
+
         return parent.lookup(name);
     }
 
@@ -70,16 +76,15 @@ final class CTEnv {
 
     void func_declare(Function func) {
         auto name = func.name;
-        if (name !in functions) {
-            functions[name] = new IR(IR.Type.overload_set, name);
+        if (global) {
+            if (name !in functions) {
+                functions[name] = new IR(IR.Type.overload_set, name);
+            }
+            functions[name].overload_set.set ~= new IR(IR.Type.constant,
+                    func.ti, Val(func));
+        } else {
+            functions[name] = new IR(IR.Type.constant, func.ti, Val(func));
         }
-        functions[name].overload_set.set ~= new IR(IR.Type.constant,
-                func.ti, Val(func));
-    }
-
-    void local_func_declare(Function func) {
-        auto name = func.name;
-        local_funcs[name] = new IR(IR.Type.variable, func.ti, func.name, Val());
     }
 
     Env get_runtime_env() {
@@ -87,9 +92,6 @@ final class CTEnv {
 
         foreach (var_name, var_decl; vars) {
             env.declare(var_name, var_decl.variable.val);
-        }
-        foreach (name, func; local_funcs) {
-            env.declare(name, Val());
         }
 
         return env;
@@ -204,6 +206,7 @@ final class CTEnv {
     TI get_basic_ti(TI.Type ti_type) {
         switch (ti_type) {
             default: assert (0, text(ti_type));
+            case TI.Type.auto_: return TI(TI.Type.auto_,[]);
             foreach (T; primitive_types) {
                 case mixin("TI.Type."~T.stringof~"_"): return get_ti!T();
             }
@@ -211,14 +214,15 @@ final class CTEnv {
         assert (0);
     }
 
-    CTEnv extend(TI[] tis, string[] names) {
+    CTEnv extend(TI[] param_types, string[] names) {
         auto ret = new CTEnv;
         ret.parent = this;
-        foreach (i; 0 .. tis.length) {
+        ret.tis = tis;
+        foreach (i; 0 .. param_types.length) {
             if (names[i].empty) {
                 continue;
             }
-            ret.var_declare(tis[i], names[i]);
+            ret.var_declare(param_types[i], names[i]);
         }
 
         return ret;
@@ -226,12 +230,25 @@ final class CTEnv {
 
     void resolve_functions() {
         foreach (os; functions) {
+            foreach (ref func; os.overload_set.set) {
+                if (func.ti.type == TI.Type.builtin_delegate
+                 || func.ti.type == TI.Type.builtin_function) {
+                    continue;
+                }
+                resolve(func.function_.body_, func.function_.env);
+                func.function_.env.resolve_functions();
+            }
+        }
+    }
+    void generate_bytecode_for_functions() {
+        foreach (os; functions) {
             foreach (func; os.overload_set.set) {
                 if (func.ti.type == TI.Type.builtin_delegate
                         || func.ti.type == TI.Type.builtin_function) {
                     continue;
                 }
-                resolve(func.function_.body_, func.function_.env);
+                func.function_.bc = 
+                    func.function_.body_.generate_bytecode(func.function_.env);
                 func.function_.env.resolve_functions();
             }
         }

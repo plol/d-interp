@@ -17,19 +17,18 @@ IR toIR(Ast ast, CTEnv env) {
     switch (ast.type) {
         default: assert (0, text(ast.type, " ", ast));
         case Ast.Type.vardecl:
-                 declare_vars(env, ast.bin.lhs, ast.bin.rhs.id_list);
-                 return null;
-
-        case Ast.Type.funcdef:
+                 {
+                     foreach (v; ast.bin.rhs.var_init_list.vars) {
+                         wtf ~= new IR(IR.Type.var_init, v.var_init.name,
+                                 v.var_init.initializer.toIR(env));
+                     }
+                     return new IR(IR.Type.var_decl,
+                             ti_from_ast(env, ast.bin.lhs), wtf);
+                 }
+        case Ast.Type.funcdef: 
                  {
                      auto func = get_function(ast, env);
-                     if (func.static_) {
-                         env.func_declare(func);
-                         return null;
-                     } else {
-                         env.local_func_declare(func);
-                         return new IR(IR.Type.local_function_create, func);
-                     }
+                     return new IR(IR.Type.function_, func.ti, func);
                  }
         case Ast.Type.nothing: return ir.nothing();
         case Ast.Type.if_: return ir.if_(
@@ -76,41 +75,38 @@ IR toIR(Ast ast, CTEnv env) {
                                  wtf ~= arg.toIR(env);
                              }
                              return ir.call(ast.bin.lhs.toIR(env), wtf);
+        case Ast.Type.return_: return ir.return_(ast.next.toIR(env));
+        case Ast.Type.prefix:
+                               assert (ast.bin.lhs.type == Ast.Type.prefix_op);
+                               assert (ast.bin.lhs.str == "&");
+                               return ir.addressof(ast.bin.rhs.toIR(env));
     }
 }
 
 Function get_function(Ast ast, CTEnv env) {
-    TI[] type_data;
     TI return_type = ti_from_ast(env, ast.funcdef.return_type);
-    type_data ~= return_type;
 
-    string name = ast.funcdef.name;
-
+    TI[] type_data = [return_type];
     string[] parameter_names;
+
     foreach (param; ast.funcdef.params.parameter_list.params) {
         type_data ~= ti_from_ast(env, param.type);
         parameter_names ~= param.name;
     }
-    auto new_env = env.extend(type_data[1..$], parameter_names);
-    IR body_ = ast.funcdef.body_.toIR(new_env);
+
+    IR body_ = ast.funcdef.body_.toIR(env);
     assert (body_.type == IR.Type.sequence);
-    return new Function(new_env, 
-                TI(env.parent is null ? TI.Type.function_ : TI.Type.delegate_, type_data),
+    return new Function( 
+                TI(TI.Type.function_, type_data),
                 env.parent is null,
-                name, parameter_names, body_);
+                ast.funcdef.name, parameter_names, body_);
 }
 
-void declare_vars(CTEnv env, Ast type, Token[] ids) {
-    auto ti = ti_from_ast(env, type);
-    foreach (id; ids) {
-        env.var_declare(ti, id.str);
-    }
-}
 
 TI ti_from_ast(CTEnv env, Ast type) {
-    assert (type.typedata.mod.type == TypeMod.Type.nothing);
+    assert (type.typedata.mod.type == TypeMod.Type.nothing, text(type));
     auto real_type = type.typedata.ast;
-    assert (real_type.type == Ast.Type.basic_type);
+    assert (real_type.type == Ast.Type.basic_type, text(type));
     return env.get_basic_ti(real_type.ti_type);
 }
 

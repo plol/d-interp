@@ -32,7 +32,7 @@ Rule!Tok[] grammar = [
     //rule!Tok("Stmt", "Switch"),
     //rule!Tok("Stmt", "Continue"),
     //rule!Tok("Stmt", "Break"),
-    //rule!Tok("Stmt", "Return"),
+    rule!Tok("Stmt", "Return", Tok.semi),
     //rule!Tok("Stmt", "Goto"),
     //rule!Tok("Stmt", "With"),
     //rule!Tok("Stmt", "Synchronized"),
@@ -52,9 +52,15 @@ Rule!Tok[] grammar = [
     rule!Tok("Declaration", "Decl"),
 
     rule!Tok("Decl", "StorageClasses", "Decl"),
-    rule!Tok("Decl", "Type", "ComIdList", Tok.semi),
+    rule!Tok("Decl", "Type", "ComVarInit", Tok.semi),
     rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionBody"),
     rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionAttributes", "FunctionBody"),
+
+    rule!Tok("ComVarInit", "VarInit"),
+    rule!Tok("ComVarInit", "ComVarInit", Tok.comma, "VarInit"),
+
+    rule!Tok("VarInit", Tok.id),
+    rule!Tok("VarInit", Tok.id, Tok.set, "AssignExpr"),
 
     rule!Tok("FunctionBody", "CurlStmtList"),
 
@@ -66,7 +72,7 @@ Rule!Tok[] grammar = [
     rule!Tok("FunctionAttributes", "FunctionAttributes", "FunctionAttribute"),
 
     rule!Tok("StorageClass", Tok.abstract_),
-    rule!Tok("StorageClass", Tok.auto_),
+    //rule!Tok("StorageClass", Tok.auto_),
     rule!Tok("StorageClass", Tok.deprecated_),
     rule!Tok("StorageClass", Tok.enum_),
     rule!Tok("StorageClass", Tok.extern_),
@@ -228,6 +234,7 @@ Rule!Tok[] grammar = [
     rule!Tok("CastQual", Tok.shared_, Tok.const_),
     rule!Tok("CastQual", Tok.shared_, Tok.inout_),
 
+    rule!Tok("Type", Tok.auto_),
     rule!Tok("Type", "BasicType"),
     rule!Tok("Type", "IdList"),
     rule!Tok("Type", Tok.dot, "IdList"),
@@ -338,6 +345,8 @@ Rule!Tok[] grammar = [
     rule!Tok("ComExprList", "ComExprList", Tok.comma),
     rule!Tok("ComExprList", "ComExprList", Tok.comma, "AssignExpr"),
 
+    rule!Tok("Return", Tok.return_),
+    rule!Tok("Return", Tok.return_, "Expr"),
     ];
 
 alias ParserGen!(Token, Ast, Tok, getTok, grammar, "Stmt", Tok.eof) P;
@@ -477,7 +486,11 @@ static this() {
 
     reduction_table["Type"] = (P.StackItem[] ts) {
         if (ts.length == 1) {
-            return ast(Ast.Type.type, ts[0].result);
+            if (ts[0].terminal) {
+                return ast(Ast.Type.type, ts[0].token.loc, TI.Type.auto_);
+            } else {
+                return ast(Ast.Type.type, ts[0].result);
+            }
         }
         if (ts[0].terminal) {
             if (ts[0].token.tok == Tok.dot) {
@@ -599,6 +612,35 @@ static this() {
                     ts[1].result, ts[2].result, ts[4].result);
         }
     };
+    reduction_table["Return"] = (P.StackItem[] ts) {
+        if (ts.length == 2) {
+            return ast(Ast.Type.return_, ts[0].token.loc,
+                    ts[1].result);
+        } else {
+            return ast(Ast.Type.return_, ts[0].token.loc,
+                    ast(Ast.Type.nothing));
+        }
+    };
+
+    reduction_table["Prefix"] = (P.StackItem[] ts) {
+        return ast(Ast.Type.prefix_op, ts[0].token.loc, ts[0].token.str);
+    };
+
+    reduction_table["ComVarInit"] = (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ast(Ast.Type.var_init_list, ts[0].result.loc,
+                    [ts[0].result]);
+        }
+        ts[0].result.var_init_list.vars ~= ts[2].result;
+        return ts[0].result;
+    }; 
+    reduction_table["VarInit"] = (P.StackItem[] ts) {
+        if (ts.length == 1) {
+            return ast(Ast.Type.var_init, ts[0].token.loc, ts[0].token.str);
+        }
+        return ast(Ast.Type.var_init, ts[0].token.loc, ts[0].token.str,
+                ts[2].result);
+    }; 
 }
 
 
@@ -633,4 +675,5 @@ TI.Type ti_type_from_tok(Tok tok) {
         case Tok.void_:   return TI.Type.void_;
     }
 }
+
 

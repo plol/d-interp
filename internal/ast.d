@@ -82,6 +82,8 @@ final class Ast {
         addressof,
         deref,
 
+        return_,
+
         member_lookup,
         module_lookup,
 
@@ -107,6 +109,10 @@ final class Ast {
         binop,
         postfix,
         prefix,
+        prefix_op,
+
+        var_init,
+        var_init_list,
 
         other,
     }
@@ -142,6 +148,14 @@ final class Ast {
         Parameter[] params;
     }
 
+    static struct VarInit {
+        string name;
+        Ast initializer;
+    }
+    static struct VarInitList {
+        Ast[] vars;
+    }
+
     union PossibleValues {
         string str;
         wstring wstr;
@@ -167,6 +181,8 @@ final class Ast {
         FuncDef funcdef;
         Parameter parameter;
         ParameterList parameter_list;
+        VarInit var_init;
+        VarInitList var_init_list;
     }
 
     Type type;
@@ -188,11 +204,26 @@ final class Ast {
             str = t.str;
         }
     }
+    this(Type t, Loc l, string s) {
+        type = t;
+        loc = l;
+        if (t == Type.prefix_op) {
+            str = s;
+        } else if (t == Type.var_init) {
+            var_init = VarInit(s, ast(Ast.Type.nothing));
+        } else {
+            assert (0);
+        }
+    }
     this(Type t, Loc l, TI.Type ti) {
         type = t;
         loc = l;
         if (t == Type.basic_type) {
             ti_type = ti;
+        } else if (t == Type.type) {
+            assert (ti == TI.Type.auto_, text(ti));
+            typedata = TypeData(TypeMod(TypeMod.Type.nothing), 
+                    ast(Ast.Type.basic_type, l, ti));
         } else {
             assert (0);
         }
@@ -272,6 +303,8 @@ final class Ast {
             values.com_expr_list = w;
         } else if (t == Type.arg_list) {
             values.com_expr_list = w;
+        } else if (t == Type.var_init_list) {
+            values.var_init_list = VarInitList(w);
         } else {
             assert (0);
         }
@@ -287,6 +320,8 @@ final class Ast {
             str = n.str;
         } else if (t == Type.cast_) {
             values.bin = Bin(ast(Ast.Type.nothing), n);
+        } else if (t == Type.return_) {
+            next = n;
         } else if (t == Type.module_lookup) {
             next = n;
         } else if (t == Type.type) {
@@ -314,6 +349,8 @@ final class Ast {
             values.bin = Bin(n1, n2);
         } else if (t == Type.application) {
             values.bin = Bin(n1, n2);
+        } else if (t == Type.prefix) {
+            values.bin = Bin(n1, n2);
         } else {
             assert (0, text(t));
         }
@@ -334,10 +371,19 @@ final class Ast {
         if (t == Type.binop) {
             values.binop = Binop(s, n1, n2);
         } else {
-            assert (0);
+            assert (0, text(t));
         }
     }
 
+    this(Type t, Loc l, string s, Ast n1) {
+        loc = l;
+        type = t;
+        if (t == Type.var_init) {
+            var_init = VarInit(s, n1);
+        } else {
+            assert (0);
+        }
+    }
     this(Type t, Loc l, Ast n1, string s) {
         loc = l;
         type = t;
@@ -467,6 +513,7 @@ final class Ast {
         if (s.length > 1 && s.startsWith("0")) {
             switch (s[1]) {
                 default: assert (0);
+                case '.': break;
                 case 'x': case 'X': radix = 16; break;
                 case 'b': case 'B': radix = 2; break;
             }
@@ -558,6 +605,28 @@ final class Ast {
                 return format("%s %s;", values.bin.lhs, values.bin.rhs);
             case Type.id_list:
                 return format("%(%s, %)", values.id_list.map!(a => a.str)());
+            case Type.return_:
+                return format("return %s", next);
+            case Type.prefix:
+                return format("%s%s", values.bin.lhs, values.bin.rhs);
+            case Type.prefix_op:
+                return values.str;
+            case Type.application:
+                return format("%s(%s)", values.bin.lhs, values.bin.rhs);
+            case Type.arg_list:
+                return format("%(%s, %)", values.arg_list);
+            case Type.funcdef:
+                return format("%s", values.funcdef);
+            case Type.parameter_list:
+                return format("%(%s, %)", values.parameter_list.params);
+            case Type.var_init_list:
+                return format("%(%s, %)", values.var_init_list.vars);
+            case Type.var_init:
+                if (values.var_init.initializer.type == Ast.Type.nothing) {
+                    return values.var_init.name;
+                }
+                return format("%s = %s", values.var_init.name,
+                        values.var_init.initializer);
         }
     }
 }

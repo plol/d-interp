@@ -5,9 +5,11 @@ import std.typecons;
 
 import stuff;
 
-import internal.ir, internal.env, internal.interp, internal.val;
+import internal.ir, internal.env, internal.val;
 import internal.typeinfo, internal.ctenv, internal.typecheck;
-import internal.ast2ir;
+import internal.ast2ir, internal.bytecode, internal.bcgen;
+import internal.interp;
+
 
 import lexer, parser;
 
@@ -226,15 +228,23 @@ void main(string[] args) {
                 continue;
             }
 
+            ct_env.return_type.type = TI.Type.unresolved;
+
             run_code(p, ct_env, "<stdin>", input);
         }
     } else if (args[1] == "--test") {
+        writeln("test 0:");
+        run_code(p, ct_env, "<test>", q{
+                writeln("test 0: ", 12);
+                });
         writeln("test 1:");
         run_code(p, ct_env, "<test>", q{
+
                 void foo(int x) {
                     writeln("x = ", x);
                     void bar() {
                         writeln("x = ", x);
+                        x = x + 1;
                     }
                     bar();
                     x = x + 1;
@@ -249,17 +259,34 @@ void main(string[] args) {
                 void foo2(int x) {
                     int i;
                     while (i < x) {
-                        writeln("i = ", i);
+                        //writeln("i = ", i);
                         i = i + 1;
-                        if (i < 377) {
-                            
-                        } else {
-                            heh_crash();
-                        }
                     }
+                    writeln("i = ", i);
                 }
 
                 foo2(10000);
+                writeln("done");
+                });
+        writeln("test 3:");
+        run_code(p, ct_env, "<test>", q{
+
+                auto foo(int x) {
+                    writeln("x = ", x);
+                    void bar() {
+                        writeln("x = ", x);
+                        x = x + 1;
+                    }
+                    bar();
+                    x = x + 1;
+                    bar();
+
+                    return &bar;
+                }
+
+                auto f = foo(12);
+
+                f();
                 writeln("done");
                 });
     }
@@ -270,7 +297,7 @@ void print_throwable(Throwable t) {
     bool lulz;
     ulong x;
     foreach (i, s; t.info) {
-        if (i < 600) {
+        if (i < 6) {
             writeln(s);
         } else {
             lulz = true;
@@ -296,33 +323,26 @@ void run_code(ref P.Parser p, ref CTEnv ct_env, string file, string input) {
     if (p.results.empty) {
         return;
     }
-    //writefln("%(%s\n%)", p.results); p.results = []; continue;
+    writeln("parsed");
+//    writefln("%(%s\n%)", p.results);
 
     Val val;
 
-    Cont cont;
-    cont.succeed = (Val v, FailCont) {
-        val = v;
-    };
-    cont.fail = (InterpretedException ex) {
-        throw ex;
-    };
-
     foreach (r; p.results) {
         auto ir = toIR(r, ct_env);
-        if (ir is null) continue;
 
         try {
             resolve(ir, ct_env);
-            ct_env.resolve_functions();
         } catch (SemanticFault f) {
             writeln("error ", r.loc, ": ", f.msg);
             break;
         }
 
+        ByteCode[] bc = ir.generate_bytecode(ct_env);
+
         auto env = ct_env.get_runtime_env();
         try {
-            ir.interpret(env, cont);
+            val = bc.interpret(env);
         } catch (Throwable t) {
             print_throwable(t);
             break;
@@ -336,3 +356,11 @@ void run_code(ref P.Parser p, ref CTEnv ct_env, string file, string input) {
     p.results = [];
 }
 
+
+auto foo() {
+    auto bar() {
+        writeln("Asdf");
+    }
+
+    return &bar;
+}
