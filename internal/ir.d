@@ -22,9 +22,6 @@ final class IR {
         function_,
         builtin_function,
 
-        local_function_create,
-        delegate_instantiation,
-
         variable,
         id,
 
@@ -79,8 +76,7 @@ final class IR {
         Val func;
     }
     static struct VarInit {
-        TI ti;
-        string name;
+        Variable var;
         IR initializer;
     }
     static struct VarDecl {
@@ -227,18 +223,7 @@ final class IR {
         ti = ti_;
         if (t == Type.function_) {
             data.function_ = f;
-        } else if (t == Type.delegate_instantiation) { 
-            data.function_ = f;
         } else { 
-            assert (0);
-        }
-    }
-
-    this(Type t, Function f) {
-        type = t;
-        if (t == Type.local_function_create) {
-            data.function_ = f;
-        } else {
             assert (0);
         }
     }
@@ -284,10 +269,6 @@ final class IR {
             //case Type.addressof: 
             //case Type.deref:
             case Type.nothing: return "(nothing)";
-            case Type.delegate_instantiation:
-                               return format("delegate[%s]", data.function_);
-            case Type.local_function_create:
-                               return format("local_func[%s]", data.function_);
             default: assert (0, text(type));
         }
     }
