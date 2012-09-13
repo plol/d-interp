@@ -277,12 +277,12 @@ TI resolve_var_decl(ref IR ir, CTEnv env) {
             }
             continue;
         }
-        v.ti = v.initializer.resolve(env);
+        v.var.ti = v.initializer.resolve(env);
         if (ir.ti.type != TI.Type.auto_ && v.ti != ir.ti) {
             throw new SemanticFault(text(
                         "cannot initialize a ", ir.ti, " with a ", v.ti));
         }
-        env.var_declare(v.ti, v.name);
+        env.var_declare(v.var);
     }
     return ir.ti;
 }

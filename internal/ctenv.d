@@ -5,16 +5,28 @@ import std.conv, std.array;
 
 import internal.typeinfo, internal.ir, internal.val, internal.env;
 import internal.typecheck, internal.function_;
+import internal.variable;
 
 import internal.bcgen;
+
+
+struct Sym {
+    enum Type {
+        variable,
+        alias_,
+        function_,
+    }
+
+    Type type;
+
+    size_t depth;
+}
 
 final class CTEnv {
 
     CTEnv parent;
 
-    // AA of function name -> overload set  (????)
-    IR[string] functions;
-    IR[string] vars;
+    Sym[] symbols;
 
     TI[string] tis;
 
@@ -43,6 +55,20 @@ final class CTEnv {
 
         return parent.lookup(name);
     }
+
+    RelativeVarIndex get_local_var_index(string name) {
+        auto e = this;
+        size_t depth = 0;
+
+        while (name !in e.vars) {
+            depth += 1;
+            assert (e.parent !is null);
+            e = e.parent;
+        }
+        return RelativeVarIndex(depth, e.vars[name].variable.local);
+    }
+
+
 
     void autodeclare(T)(string name, T t) {
         var_declare(get_ti!T(), name, Val(t));
@@ -84,25 +110,6 @@ final class CTEnv {
                     func.ti, Val(func));
         } else {
             functions[name] = new IR(IR.Type.constant, func.ti, Val(func));
-        }
-    }
-
-    Env get_runtime_env() {
-        auto env = new Env;
-
-        foreach (var_name, var_decl; vars) {
-            env.declare(var_name, var_decl.variable.global.init_val);
-        }
-
-        return env;
-    }
-
-    void assimilate(Env env) {
-        foreach (name, val; env.vars) {
-            vars[name].variable.global.init_val = val;
-        }
-        if (parent !is null) {
-            parent.assimilate(env.parent);
         }
     }
 
@@ -358,6 +365,24 @@ string unpackVars(Ts...)(int x = 0) {
         } else {
             return first ~ ", " ~ unpackVars!(Ts[1 .. $])(x+1);
         }
+    }
+}
+
+Env get_runtime_env(CTEnv ct_env) {
+    auto env = new Env(ct_env.vars.length);
+
+    foreach (var_name, var_decl; ct_env.vars) {
+        //env.declare(var_name, var_decl.variable.global.init_val);
+    }
+
+    return env;
+}
+
+void assimilate(CTEnv ct_env, Env env) {
+    assert (ct_env.global);
+    foreach (name, val; ct_env.vars) {
+        auto var = val.variable;
+        var.init_val = env.vars[var.index];
     }
 }
 

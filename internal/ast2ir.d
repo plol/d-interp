@@ -6,6 +6,7 @@ import internal.ast, internal.ir;
 import internal.typeinfo;
 import internal.ctenv;
 import internal.function_;
+import internal.variable;
 import lexer;
 
 IR toIR(Ast ast, CTEnv env) {
@@ -19,7 +20,8 @@ IR toIR(Ast ast, CTEnv env) {
         case Ast.Type.vardecl:
                  {
                      foreach (v; ast.bin.rhs.var_init_list.vars) {
-                         wtf ~= new IR(IR.Type.var_init, v.var_init.name,
+                         auto var = new Variable(v.var_init.name);
+                         wtf ~= new IR(IR.Type.var_init, var,
                                  v.var_init.initializer.toIR(env));
                      }
                      return new IR(IR.Type.var_decl,
@@ -94,12 +96,20 @@ Function get_function(Ast ast, CTEnv env) {
         parameter_names ~= param.name;
     }
 
+    Variable[] params;
+    foreach (i; 0 .. parameter_names.length) {
+        auto p = new Variable(parameter_names[i]);
+        p.ti = type_data[i+1];
+        params ~= p;
+
+    }
+
     IR body_ = ast.funcdef.body_.toIR(env);
     assert (body_.type == IR.Type.sequence);
     return new Function( 
                 TI(TI.Type.function_, type_data),
                 env.parent is null,
-                ast.funcdef.name, parameter_names, body_);
+                ast.funcdef.name, params, body_);
 }
 
 

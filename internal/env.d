@@ -3,13 +3,15 @@ module internal.env;
 import std.stdio, std.array;
 
 import internal.val, internal.typeinfo;
+import internal.variable;
 import stuff;
 
 final class Env {
     Env parent;
     Val[] vars;
 
-    this(Env p=null) {
+    this(size_t n, Env p=null) {
+        vars.length = n;
         parent = p;
     }
 
@@ -22,16 +24,15 @@ final class Env {
         }
         return e;
     }
-    void update(size_t depth, size_t index, Val val) {
-        get_with_depth(depth).vars[index] = val;
+    void update(RelativeVarIndex rel, Val val) {
+        get_with_depth(rel.depth).vars[rel.index] = val;
     }
-    ref Val lookup(size_t depth, size_t index) {
-        return get_with_depth(depth).vars[index];
+    ref Val lookup(RelativeVarIndex rel) {
+        return get_with_depth(rel.depth).vars[rel.index];
     }
 
     Env extend(size_t n) {
-        auto ret = new Env(this);
-        ret.vars.length = n;
+        auto ret = new Env(n, this);
         return ret;
     }
 }

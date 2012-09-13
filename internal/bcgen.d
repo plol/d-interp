@@ -1,4 +1,11 @@
+module internal.bcgen;
 
+import std.array;
+import internal.bytecode;
+import internal.ir;
+import internal.ctenv;
+import internal.val;
+import internal.typeinfo;
 
 ByteCode[] generate_bytecode(IR ir, CTEnv env) {
     ByteCode[] ret;
@@ -8,6 +15,7 @@ ByteCode[] generate_bytecode(IR ir, CTEnv env) {
 
 size_t generate_bytecode(IR ir, CTEnv env, ref ByteCode[] bc) {
     switch (ir.type) {
+        default: assert (0);
         case IR.Type.if_: return generate_if(ir, env, bc);
         case IR.Type.while_: return generate_while(ir, env, bc);
         //case IR.Type.switch_: return generate_switch(ir, env, bc);
@@ -31,12 +39,18 @@ size_t end(ref ByteCode[] bc) {
     return bc.length - 1;
 }
 
+void jump_to(size_t a, size_t b, ref ByteCode[] bc) {
+    bc[a].jump.target = b;
+}
+
 size_t generate_branch(ref ByteCode[] bc) {
     bc ~= ByteCode(ByteCode.Type.branch);
+    return bc.end;
 }
 
 size_t generate_jump(ref ByteCode[] bc) {
     bc ~= ByteCode(ByteCode.Type.jump);
+    return bc.end;
 }
 
 size_t generate_if(IR ir, CTEnv env, ref ByteCode[] bc) {
@@ -67,10 +81,11 @@ size_t generate_variable(IR ir, CTEnv env, ref ByteCode[] bc) {
     auto var = ir.variable;
     if (var.local) {
         bc ~= ByteCode(ByteCode.Type.local_variable_lookup,
-                var.local.depth,
-                var.local.index);
+                env.get_local_var_index(var.name));
+        return bc.end;
     } else if (var.global) {
-        bc ~= ByteCode(ByteCode.Type.global_variable_lookup, var.global.index);
+        bc ~= ByteCode(ByteCode.Type.global_variable_lookup, var.index);
+        return bc.end;
     } else {
         assert (0);
     }
@@ -112,7 +127,7 @@ size_t generate_application(IR ir, CTEnv env, ref ByteCode[] bc) {
         if (operator.function_.local) {
             bc ~= ByteCode(ByteCode.Type.call_local_function);
         } else if (operator.function_.global) {
-            bc ~= ByteCode(ByteCode.Type.call_global_function);
+            bc ~= ByteCode(ByteCode.Type.call_function);
         } else {
             assert (0);
         }
@@ -124,8 +139,8 @@ size_t generate_application(IR ir, CTEnv env, ref ByteCode[] bc) {
 
 size_t generate_pointer_for(IR ir, CTEnv env, ref ByteCode[] bc) {
     if (ir.type == IR.Type.variable) {
-        bc ~= ByteCode(ByteCode.Type.variable_reference_lookup,
-                ir.variable.depth,
+        assert (ir.variable.local);
+        bc ~= ByteCode(ByteCode.Type.local_variable_reference_lookup,
                 ir.variable.index);
         return bc.end;
     } else if (ir.type == IR.Type.deref) {
@@ -154,15 +169,16 @@ size_t generate_return(IR ir, CTEnv env, ref ByteCode[] bc) {
     return ret;
 }
 size_t generate_var_decl(IR ir, CTEnv env, ref ByteCode[] bc) {
+    auto ret = bc.end+1;
     foreach (vi; ir.var_decl.inits) {
         vi.generate_bytecode(env, bc);
     }
+    return ret;
 }
 size_t generate_var_init(IR ir, CTEnv env, ref ByteCode[] bc) {
-
-    bc ~= ByteCode(ByteCode.Type.variable_reference_lookup,
-            ir.var_init.variable.depth,
-            ir.var_init.variable.index);
+    bc ~= ByteCode(ByteCode.Type.local_variable_reference_lookup,
+            ir.var_init.var.index);
+    return bc.end;
 }
 size_t generate_nothing(IR ir, CTEnv env, ref ByteCode[] bc) {
     bc ~= ByteCode(ByteCode.Type.nop);

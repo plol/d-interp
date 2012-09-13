@@ -20,7 +20,7 @@ final class Function {
     IR body_;
     ByteCode[] bc;
 
-    this(TI ti_, bool static__, string n, string[] ps, IR b) {
+    this(TI ti_, bool static__, string n, Variable[] ps, IR b) {
         ti = ti_;
         static_ = static__;
         name = n;
@@ -31,6 +31,8 @@ final class Function {
     string toString() {
         return name;
     }
+    bool local() @property { return !static_; }
+    bool global() @property { return static_; }
 }
 
 struct Delegate {

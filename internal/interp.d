@@ -5,7 +5,7 @@ import std.range, std.algorithm, std.array;
 
 import internal.function_;
 import internal.env, internal.val, internal.ir, internal.typeinfo;
-import internal.bytecode;
+import internal.bytecode, internal.variable;
 
 
 class InterpretedException : Exception {
@@ -74,11 +74,17 @@ Val interpret(ByteCode[] bc, Env env) {
             case ByteCode.Type.push_arg:
                 arg_stack ~= val;
                 break;
-            case ByteCode.Type.variable_reference_lookup:
-                val = Val(&env.lookup(c.var_lookup.var_name));
+            case ByteCode.Type.global_variable_reference_lookup:
+                assert (0);
                 break;
-            case ByteCode.Type.variable_lookup:
-                val = env.lookup(c.var_lookup.var_name);
+            case ByteCode.Type.global_variable_lookup:
+                assert (0);
+                break;
+            case ByteCode.Type.local_variable_reference_lookup:
+                assert (0);
+                break;
+            case ByteCode.Type.local_variable_lookup:
+                assert (0);
                 break;
             case ByteCode.Type.constant:
                 val = c.constant.val;
@@ -90,8 +96,7 @@ Val interpret(ByteCode[] bc, Env env) {
                 val.builtin_delegate(pop_args(c.call.num_args));
                 break;
             case ByteCode.Type.call_function:
-                val = call_function(val.func, env.static_env,
-                        pop_args(c.call.num_args));
+                assert (0);
                 break;
             case ByteCode.Type.call_delegate:
                 val = call_function(val.delegate_.func, val.delegate_.env,
@@ -120,9 +125,8 @@ Val call_function(Function f, Env env, Val[] operands) {
         if (f.params[i] is null) {
             continue;
         }
-        auto l = f.params[i].local;
-        assert (l.depth == 0);
-        new_env.update(l.depth, l.index, operands[i]);
+        auto l = f.params[i];
+        new_env.update(RelativeVarIndex(0, l.index), operands[i]);
     }
     inctrace();
     auto ret = f.bc.interpret(new_env);

@@ -1,8 +1,14 @@
+module internal.bytecode;
+
+import internal.val;
+import internal.typeinfo;
+import internal.variable;
 
 struct ByteCode {
     enum Type {
         nop,
         branch,
+        jump,
         goto_,
         push_arg,
         local_variable_reference_lookup,
@@ -14,6 +20,7 @@ struct ByteCode {
         call_builtin_delegate,
         call_function,
         call_delegate,
+        call_local_function,
         assignment,
         make_delegate,
         leave,
@@ -31,12 +38,16 @@ struct ByteCode {
     static struct Call {
         size_t num_args;
     }
+    static struct Assignment {
+        size_t size;
+    }
 
     union PossibleValues {
         Jump jump;
         VarLookup var_lookup;
         Constant constant;
         Call call;
+        Assignment assignment;
     }
 
     Type type;
@@ -55,12 +66,22 @@ struct ByteCode {
             assert (0);
         }
     }
-    this(Type t, size_t depth, size_t index) {
+    this(Type t, size_t index) {
         type = t;
-        if (t == Type.variable_lookup) {
-            var_lookup = VarLookup(depth, index);
-        } else if (t == Type.variable_reference_lookup) {
-            var_lookup = VarLookup(depth, index);
+        if (t == Type.global_variable_lookup) {
+            var_lookup = VarLookup(0, index);
+        } else if (t == Type.global_variable_reference_lookup) {
+            var_lookup = VarLookup(0, index);
+        } else {
+            assert (0);
+        }
+    }
+    this(Type t, RelativeVarIndex rel) {
+        type = t;
+        if (t == Type.local_variable_lookup) {
+            var_lookup = VarLookup(rel.depth, rel.index);
+        } else if (t == Type.local_variable_reference_lookup) {
+            var_lookup = VarLookup(rel.depth, rel.index);
         } else {
             assert (0);
         }

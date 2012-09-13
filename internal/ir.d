@@ -139,10 +139,10 @@ final class IR {
             assert (0, text(t));
         }
     }
-    this(Type t, string s, IR ir1) {
+    this(Type t, Variable v, IR ir1) {
         type = t;
         if (t == Type.var_init) {
-            data.var_init = VarInit(TI.unresolved, s, ir1);
+            data.var_init = VarInit(v, ir1);
         } else {
             assert (0, text(t));
         }
