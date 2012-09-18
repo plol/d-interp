@@ -17,7 +17,6 @@ final class IR {
         if_,
         while_,
         switch_,
-        // etc
 
         function_,
         builtin_function,
@@ -93,7 +92,10 @@ final class IR {
         ID id;
 
         Function function_;
-        Variable variable;
+        struct {
+            Variable variable;
+            size_t variable_depth;
+        }
 
         BuiltinFunction builtin_function;
 

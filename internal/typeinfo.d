@@ -127,6 +127,9 @@ struct TI {
     ref TI second() @property { return ext_data[1]; }
     TI[] operands() @property { return ext_data[1 .. $]; }
 
+    this(Type t) {
+        this(t, []);
+    }
     this(Type t, TI[] e) {
         type = t;
         ext_data = e;

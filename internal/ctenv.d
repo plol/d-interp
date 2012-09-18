@@ -10,23 +10,11 @@ import internal.variable;
 import internal.bcgen;
 
 
-struct Sym {
-    enum Type {
-        variable,
-        alias_,
-        function_,
-    }
-
-    Type type;
-
-    size_t depth;
-}
-
 final class CTEnv {
 
     CTEnv parent;
 
-    Sym[] symbols;
+    IR[string] table;
 
     TI[string] tis;
 
@@ -43,17 +31,19 @@ final class CTEnv {
     IR lookup(string name) {
         assert (!(name in functions && name in vars));
 
-        if (name in functions) {
-            return functions[name];
-        } else if (name in vars) {
-            return vars[name];
+        if (name in table) {
+            return table[name];
         }
         if (parent is null) {
             throw new SemanticFault(
                     text("undefined identifier ", name));
         }
 
-        return parent.lookup(name);
+        auto ret = parent.lookup(name);
+        if (ret.type == IR.Type.variable) {
+            ret = new IR(IR.Type.up_ref, ret);
+        }
+        return ret;
     }
 
     RelativeVarIndex get_local_var_index(string name) {
