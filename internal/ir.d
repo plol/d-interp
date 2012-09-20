@@ -24,6 +24,8 @@ final class IR {
         variable,
         id,
 
+        up_ref,
+
         overload_set,
 
         sequence,
@@ -75,7 +77,7 @@ final class IR {
         Val func;
     }
     static struct VarInit {
-        Variable var;
+        string name;
         IR initializer;
     }
     static struct VarDecl {
@@ -92,10 +94,7 @@ final class IR {
         ID id;
 
         Function function_;
-        struct {
-            Variable variable;
-            size_t variable_depth;
-        }
+        Variable variable;
 
         BuiltinFunction builtin_function;
 
@@ -113,6 +112,19 @@ final class IR {
     Data data;
     alias data this;
 
+
+    bool local() @property {
+        switch (type) {
+            case Type.variable:
+                return variable.local;
+            case Type.function_:
+                return function_.local;
+            case Type.up_ref:
+                return true;
+            default:
+                return false;
+        }
+    }
 
     this(Type t) {
         type = t;
@@ -141,10 +153,10 @@ final class IR {
             assert (0, text(t));
         }
     }
-    this(Type t, Variable v, IR ir1) {
+    this(Type t, string n, IR ir1) {
         type = t;
         if (t == Type.var_init) {
-            data.var_init = VarInit(v, ir1);
+            data.var_init = VarInit(n, ir1);
         } else {
             assert (0, text(t));
         }
@@ -158,6 +170,8 @@ final class IR {
         } else if (t == Type.deref) {
             next = ir1;
         } else if (t == Type.return_) {
+            next = ir1;
+        } else if (t == Type.up_ref) {
             next = ir1;
         } else {
             assert (0);
@@ -212,9 +226,7 @@ final class IR {
         type = t;
         ti = ti_;
         resolved = true;
-        if (t == Type.variable) {
-            variable = new Variable(name, val);
-        } else if (t == Type.builtin_function) {
+        if (t == Type.builtin_function) {
             builtin_function = BuiltinFunction(name, val);
         } else {
             assert (0, text(t));
@@ -226,6 +238,15 @@ final class IR {
         if (t == Type.function_) {
             data.function_ = f;
         } else { 
+            assert (0);
+        }
+    }
+    this(Type t, Variable v) {
+        type = t;
+        ti = v.ti;
+        if (t == Type.variable) {
+            variable = v;
+        } else {
             assert (0);
         }
     }
@@ -270,6 +291,18 @@ final class IR {
             //case Type.typeof_: 
             //case Type.addressof: 
             //case Type.deref:
+            case Type.var_decl: return format("%s %(%s, %);",
+                                        ti,
+                                        data.var_decl.inits);
+            case Type.var_init: {
+                                    auto vi = data.var_init;
+                                    if (vi.initializer.type == Type.nothing) {
+                                        return vi.name;
+                                    }
+                                    return format("%s = %s", vi.name,
+                                            vi.initializer);
+                                }
+
             case Type.nothing: return "(nothing)";
             default: assert (0, text(type));
         }

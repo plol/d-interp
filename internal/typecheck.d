@@ -19,7 +19,7 @@ string lotsa_spaces = "                                                        "
 ~"                                                       "; // True code poetry;
 int depth = 0;
 
-bool trace = false;
+bool trace = true;
 
 void pre_resolve(IR ir) {
     if (!trace) return;
@@ -47,6 +47,7 @@ TI resolve(ref IR ir, CTEnv env) {
         IR.Type.overload_set: &resolve_overload_set,
         IR.Type.return_: &resolve_return,
         IR.Type.var_decl: &resolve_var_decl,
+        IR.Type.var_init: &resolve_var_init,
         IR.Type.function_: &resolve_function,
         ];
 
@@ -268,24 +269,32 @@ TI resolve_function(ref IR ir, CTEnv env) {
 }
 
 TI resolve_var_decl(ref IR ir, CTEnv env) {
-    foreach (var; ir.var_decl.inits) {
-        auto v = &var.var_init;
-        if (v.initializer.type == IR.Type.nothing) {
-            if (ir.ti.type == TI.Type.auto_) {
-                throw new SemanticFault(
-                        "Must have initializer for auto declaration");
-            }
-            continue;
+    foreach (ref init_ir; ir.var_decl.inits) {
+        init_ir.ti = ir.ti;
+        init_ir.resolve(env);
+    }
+    return TI.void_;
+}
+
+TI resolve_var_init(ref IR ir, CTEnv env) {
+    auto var_init = ir.var_init;
+    auto var = env.var_declare(ir.ti, var_init.name);
+
+    if (var_init.initializer.type == IR.Type.nothing) {
+        if (ir.ti.type == TI.Type.auto_) {
+            throw new SemanticFault(
+                    "Must have initializer for auto declaration");
         }
-        v.var.ti = v.initializer.resolve(env);
-        if (ir.ti.type != TI.Type.auto_ && v.ti != ir.ti) {
-            throw new SemanticFault(text(
-                        "cannot initialize a ", ir.ti, " with a ", v.ti));
-        }
-        env.var_declare(v.var);
+        var.ti = ir.ti;
+        var.variable.ti = var.ti; // ugh
+        return ir.ti;
+    }
+    var.ti = var_init.initializer.resolve(env);
+    var.variable.ti = var.ti; // ugh
+    if (ir.ti.type != TI.Type.auto_ && var.ti != ir.ti) {
+        throw new SemanticFault(text(
+                    "cannot initialize a ", ir.ti, " with a ", var.ti));
     }
     return ir.ti;
 }
-
-
 

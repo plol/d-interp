@@ -15,20 +15,11 @@ final class Env {
         parent = p;
     }
 
-    private Env get_with_depth(size_t depth) {
-        auto e = this;
-        while (depth > 0) {
-            assert (e.parent !is null, "no parent for dynamic environment");
-            e = e.parent;
-            depth -= 1;
-        }
-        return e;
+    void update(size_t index, Val val) {
+        vars[index] = val;
     }
-    void update(RelativeVarIndex rel, Val val) {
-        get_with_depth(rel.depth).vars[rel.index] = val;
-    }
-    ref Val lookup(RelativeVarIndex rel) {
-        return get_with_depth(rel.depth).vars[rel.index];
+    ref Val lookup(size_t index) {
+        return vars[index];
     }
 
     Env extend(size_t n) {

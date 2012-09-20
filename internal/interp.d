@@ -120,13 +120,14 @@ Val interpret(ByteCode[] bc, Env env) {
 }
 
 Val call_function(Function f, Env env, Val[] operands) {
-    auto new_env = env.extend(f.env.vars.length);
+    auto new_env = env.extend(f.env.var_count);
+    size_t index;
     foreach (i; 0 .. f.params.length) {
         if (f.params[i] is null) {
             continue;
         }
-        auto l = f.params[i];
-        new_env.update(RelativeVarIndex(0, l.index), operands[i]);
+        new_env.update(index, operands[i]);
+        index += 1;
     }
     inctrace();
     auto ret = f.bc.interpret(new_env);

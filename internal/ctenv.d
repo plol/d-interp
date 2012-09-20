@@ -9,15 +9,28 @@ import internal.variable;
 
 import internal.bcgen;
 
+final class GlobalEnv {
+    IR[] global_vars;
+
+    void insert(TI ti, string name, Val val) {
+        auto v = new IR(IR.Type.variable, Variable.new_global(ti, name, val));
+        global_vars ~= v;
+        v.variable.index = global_vars.length - 1;
+    }
+}
+
 
 final class CTEnv {
 
     CTEnv parent;
 
+    GlobalEnv globals;
+
     IR[string] table;
 
     TI[string] tis;
 
+    size_t var_count;
     TI return_type;
 
     bool global() @property {
@@ -29,7 +42,6 @@ final class CTEnv {
     }
 
     IR lookup(string name) {
-        assert (!(name in functions && name in vars));
 
         if (name in table) {
             return table[name];
@@ -40,66 +52,61 @@ final class CTEnv {
         }
 
         auto ret = parent.lookup(name);
-        if (ret.type == IR.Type.variable) {
+        if (ret.local) {
             ret = new IR(IR.Type.up_ref, ret);
         }
         return ret;
     }
 
-    RelativeVarIndex get_local_var_index(string name) {
-        auto e = this;
-        size_t depth = 0;
-
-        while (name !in e.vars) {
-            depth += 1;
-            assert (e.parent !is null);
-            e = e.parent;
-        }
-        return RelativeVarIndex(depth, e.vars[name].variable.local);
-    }
-
-
-
     void autodeclare(T)(string name, T t) {
-        var_declare(get_ti!T(), name, Val(t));
+        global_var_declare(get_ti!T(), name, Val(t));
     }
 
     void aadeclare(T)(string name, T t) {
-        var_declare(get_ti!T(), name, Val(cast(void*)t));
+        global_var_declare(get_ti!T(), name, Val(cast(void*)t));
+    }
+
+    void global_var_declare(TI ti, string name, Val val) {
+        globals.insert(ti, name, val);
+    }
+
+    private void insert_into_overload_set(string name, IR ir) {
+        if (name in table) {
+            enforce(table[name].type == IR.Type.overload_set);
+        } else {
+            table[name] = new IR(IR.Type.overload_set, name);
+        }
+        table[name].overload_set.set ~= ir;
     }
 
     void builtin_func_declare(Ts...)(string name) if (Ts.length == 1) {
         alias Ts[0] T;
         static assert (isFunctionPointer!(typeof(&T)));
 
-        if (name !in functions) {
-            functions[name] = new IR(IR.Type.overload_set, name);
-        }
-
         auto ir = new IR(IR.Type.constant,
                 get_ti!(typeof(&T))(), Val(&wrap!T));
         ir.resolved = true;
-            
-        functions[name].overload_set.set ~= ir;
+
+        insert_into_overload_set(name, ir);
     }
 
-    void var_declare(TI ti, string name) {
-        var_declare(ti, name, init_val(ti));
-    }
-    void var_declare(TI ti, string name, Val val) {
-        vars[name] = new IR(IR.Type.variable, ti, name, val);
+    IR var_declare(TI ti, string name) {
+        enforce(name !in table);
+        var_count += 1;
+
+        auto var = Variable.new_local(ti, name);
+        auto ir = new IR(IR.Type.variable, var);
+        table[name] = ir;
+        return ir;
     }
 
     void func_declare(Function func) {
         auto name = func.name;
         if (global) {
-            if (name !in functions) {
-                functions[name] = new IR(IR.Type.overload_set, name);
-            }
-            functions[name].overload_set.set ~= new IR(IR.Type.constant,
-                    func.ti, Val(func));
+            insert_into_overload_set(name, new IR(IR.Type.constant,
+                        func.ti, Val(func)));
         } else {
-            functions[name] = new IR(IR.Type.constant, func.ti, Val(func));
+            table[name] = new IR(IR.Type.constant, func.ti, Val(func));
         }
     }
 
@@ -212,43 +219,23 @@ final class CTEnv {
     }
 
     CTEnv extend(TI[] param_types, string[] names) {
-        auto ret = new CTEnv;
-        ret.parent = this;
-        ret.tis = tis;
+        auto ret = new CTEnv(this);
         foreach (i; 0 .. param_types.length) {
             if (names[i].empty) {
                 continue;
             }
             ret.var_declare(param_types[i], names[i]);
         }
-
         return ret;
     }
-
-    void resolve_functions() {
-        foreach (os; functions) {
-            foreach (ref func; os.overload_set.set) {
-                if (func.ti.type == TI.Type.builtin_delegate
-                 || func.ti.type == TI.Type.builtin_function) {
-                    continue;
-                }
-                resolve(func.function_.body_, func.function_.env);
-                func.function_.env.resolve_functions();
-            }
-        }
+    
+    this() {
+        globals = new GlobalEnv;
     }
-    void generate_bytecode_for_functions() {
-        foreach (os; functions) {
-            foreach (func; os.overload_set.set) {
-                if (func.ti.type == TI.Type.builtin_delegate
-                        || func.ti.type == TI.Type.builtin_function) {
-                    continue;
-                }
-                func.function_.bc = 
-                    func.function_.body_.generate_bytecode(func.function_.env);
-                func.function_.env.resolve_functions();
-            }
-        }
+    this(CTEnv p) {
+        parent = p;
+        globals = p.globals;
+        tis = p.tis;
     }
 }
 
@@ -359,18 +346,17 @@ string unpackVars(Ts...)(int x = 0) {
 }
 
 Env get_runtime_env(CTEnv ct_env) {
-    auto env = new Env(ct_env.vars.length);
-
-    foreach (var_name, var_decl; ct_env.vars) {
-        //env.declare(var_name, var_decl.variable.global.init_val);
-    }
+    auto env = new Env(ct_env.var_count);
 
     return env;
 }
 
 void assimilate(CTEnv ct_env, Env env) {
     assert (ct_env.global);
-    foreach (name, val; ct_env.vars) {
+    foreach (name, val; ct_env.table) {
+        if (val.type != IR.Type.variable) {
+            continue;
+        }
         auto var = val.variable;
         var.init_val = env.vars[var.index];
     }

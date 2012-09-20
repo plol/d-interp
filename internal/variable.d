@@ -22,14 +22,21 @@ final class Variable {
 
     Val init_val = void;
 
-    this(string n, Val val) {
+    private this(TI t, string n) {
+        ti = t;
         name = n;
-        type = Type.global;
-        init_val = val;
     }
-    this(string n) {
-        name = n;
-        type = Type.local;
+
+    static Variable new_global(TI ti, string name, Val val) {
+        auto v = new Variable(ti, name);
+        v.type = Type.global;
+        v.init_val = val;
+        return v;
+    }
+    static Variable new_local(TI ti, string name) {
+        auto v = new Variable(ti, name);
+        v.type = Type.local;
+        return v;
     }
 
     bool local() @property { return type == Type.local; }

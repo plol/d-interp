@@ -15,12 +15,12 @@ final class Function {
     TI ti;
     bool static_;
     string name;
-    Variable[] params;
+    string[] params;
 
     IR body_;
     ByteCode[] bc;
 
-    this(TI ti_, bool static__, string n, Variable[] ps, IR b) {
+    this(TI ti_, bool static__, string n, string[] ps, IR b) {
         ti = ti_;
         static_ = static__;
         name = n;

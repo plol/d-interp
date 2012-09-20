@@ -1,7 +1,10 @@
 module internal.bytecode;
 
-import internal.val;
+import std.stdio;
+import std.conv;
+
 import internal.typeinfo;
+import internal.val;
 import internal.variable;
 
 struct ByteCode {
@@ -23,13 +26,17 @@ struct ByteCode {
         call_local_function,
         assignment,
         make_delegate,
+
+        push_env,
+        pop_env,
+        get_parent_env,
+
         leave,
     }
     static struct Jump {
         size_t target;
     }
     static struct VarLookup {
-        size_t depth;
         size_t index;
     }
     static struct Constant {
@@ -69,21 +76,11 @@ struct ByteCode {
     this(Type t, size_t index) {
         type = t;
         if (t == Type.global_variable_lookup) {
-            var_lookup = VarLookup(0, index);
+            var_lookup = VarLookup(index);
         } else if (t == Type.global_variable_reference_lookup) {
-            var_lookup = VarLookup(0, index);
+            var_lookup = VarLookup(index);
         } else {
-            assert (0);
-        }
-    }
-    this(Type t, RelativeVarIndex rel) {
-        type = t;
-        if (t == Type.local_variable_lookup) {
-            var_lookup = VarLookup(rel.depth, rel.index);
-        } else if (t == Type.local_variable_reference_lookup) {
-            var_lookup = VarLookup(rel.depth, rel.index);
-        } else {
-            assert (0);
+            assert (0, text(t));
         }
     }
 }
