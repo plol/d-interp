@@ -12,10 +12,11 @@ import internal.bcgen;
 final class GlobalEnv {
     IR[] global_vars;
 
-    void insert(TI ti, string name, Val val) {
+    Variable insert(TI ti, string name, Val val) {
         auto v = new IR(IR.Type.variable, Variable.new_global(ti, name, val));
         global_vars ~= v;
         v.variable.index = global_vars.length - 1;
+        return v.variable;
     }
 }
 
@@ -33,12 +34,14 @@ final class CTEnv {
     size_t var_count;
     TI return_type;
 
+    bool overwrite;
+
     bool global() @property {
         return parent is null;
     }
 
-    ref TI typeof_(string var_name) {
-        assert (0);
+    ref TI typeof_(string name) {
+        assert (0, name);
     }
 
     IR lookup(string name) {
@@ -54,6 +57,7 @@ final class CTEnv {
         auto ret = parent.lookup(name);
         if (ret.local) {
             ret = new IR(IR.Type.up_ref, ret);
+            table[name] = ret;
         }
         return ret;
     }
@@ -66,15 +70,24 @@ final class CTEnv {
         global_var_declare(get_ti!T(), name, Val(cast(void*)t));
     }
 
-    void global_var_declare(TI ti, string name, Val val) {
-        globals.insert(ti, name, val);
+    IR global_var_declare(TI ti, string name, Val val) {
+        enforce(overwrite || name !in table);
+
+        auto var = globals.insert(ti, name, val);
+
+        auto ir = new IR(IR.Type.variable, var);
+        table[name] = ir;
+
+        return ir;
     }
 
     private void insert_into_overload_set(string name, IR ir) {
-        if (name in table) {
-            enforce(table[name].type == IR.Type.overload_set);
-        } else {
+        if (name in table && table[name].type == IR.Type.overload_set) {
+            // it's all good
+        } else if (overwrite || name !in table) {
             table[name] = new IR(IR.Type.overload_set, name);
+        } else {
+            enforce(false);
         }
         table[name].overload_set.set ~= ir;
     }
@@ -91,12 +104,16 @@ final class CTEnv {
     }
 
     IR var_declare(TI ti, string name) {
-        enforce(name !in table);
-        var_count += 1;
+        enforce(overwrite || name !in table);
 
         auto var = Variable.new_local(ti, name);
+        var.index = var_count;
+
         auto ir = new IR(IR.Type.variable, var);
         table[name] = ir;
+
+        var_count += 1;
+
         return ir;
     }
 
@@ -106,6 +123,7 @@ final class CTEnv {
             insert_into_overload_set(name, new IR(IR.Type.constant,
                         func.ti, Val(func)));
         } else {
+            enforce(overwrite || name !in table);
             table[name] = new IR(IR.Type.constant, func.ti, Val(func));
         }
     }
@@ -229,8 +247,9 @@ final class CTEnv {
         return ret;
     }
     
-    this() {
+    this(bool allow_overwriting_declarations=false) {
         globals = new GlobalEnv;
+        overwrite = allow_overwriting_declarations;
     }
     this(CTEnv p) {
         parent = p;
@@ -346,19 +365,25 @@ string unpackVars(Ts...)(int x = 0) {
 }
 
 Env get_runtime_env(CTEnv ct_env) {
-    auto env = new Env(ct_env.var_count);
+    assert (ct_env.global);
+    auto env = new Env(ct_env.var_count, ct_env.globals.global_vars.length);
 
+    update_env(ct_env, env);
     return env;
+}
+
+void update_env(CTEnv ct_env, Env env) {
+    assert (ct_env.global);
+    env.globals.vars.length = ct_env.globals.global_vars.length;
+    foreach (i; 0 .. ct_env.globals.global_vars.length) {
+        env.globals.vars[i] = ct_env.globals.global_vars[i].variable.init_val;
+    }
 }
 
 void assimilate(CTEnv ct_env, Env env) {
     assert (ct_env.global);
-    foreach (name, val; ct_env.table) {
-        if (val.type != IR.Type.variable) {
-            continue;
-        }
-        auto var = val.variable;
-        var.init_val = env.vars[var.index];
+    foreach (i; 0 .. ct_env.globals.global_vars.length) {
+        ct_env.globals.global_vars[i].variable.init_val = env.globals.vars[i];
     }
 }
 

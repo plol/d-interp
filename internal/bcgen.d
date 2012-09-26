@@ -2,6 +2,7 @@ module internal.bcgen;
 
 import std.array;
 import std.stdio;
+import std.conv;
 
 import internal.bytecode;
 import internal.ctenv;
@@ -17,7 +18,7 @@ ByteCode[] generate_bytecode(IR ir, CTEnv env) {
 
 size_t generate_bytecode(IR ir, CTEnv env, ref ByteCode[] bc) {
     switch (ir.type) {
-        default: assert (0);
+        default: assert (0, text(ir.type));
         case IR.Type.if_: return generate_if(ir, env, bc);
         case IR.Type.while_: return generate_while(ir, env, bc);
         //case IR.Type.switch_: return generate_switch(ir, env, bc);
@@ -33,6 +34,8 @@ size_t generate_bytecode(IR ir, CTEnv env, ref ByteCode[] bc) {
         case IR.Type.return_: return generate_return(ir, env, bc);
         case IR.Type.var_decl: return generate_var_decl(ir, env, bc);
         case IR.Type.var_init: return generate_var_init(ir, env, bc);
+        case IR.Type.function_: return generate_function(ir, env, bc);
+        case IR.Type.up_ref: return generate_up_ref(ir, env, bc);
         case IR.Type.nothing: return generate_nothing(ir, env, bc);
     }
 }
@@ -78,14 +81,20 @@ size_t generate_while(IR ir, CTEnv env, ref ByteCode[] bc) {
     jump_back.jump_to(body_start, bc);
     return ret;
 }
-size_t generate_up_ref(IR ir, CTEnv env, ref ByteCode[] bc) {
-    auto ret = bc.end + 1;
-    bc ~= ByteCode(ByteCode.Type.push_env);
+
+IR unwind_up_ref(IR ir, ref ByteCode[] bc) {
     while (ir.type == IR.Type.up_ref) {
         bc ~= ByteCode(ByteCode.Type.get_parent_env);
         ir = ir.next;
     }
-    ir.generate_bytecode(env, bc);
+    return ir;
+}
+
+size_t generate_up_ref(IR ir, CTEnv env, ref ByteCode[] bc) {
+    auto ret = bc.end + 1;
+    bc ~= ByteCode(ByteCode.Type.push_env);
+    auto inner = unwind_up_ref(ir, bc);
+    inner.generate_bytecode(env, bc);
     bc ~= ByteCode(ByteCode.Type.pop_env);
     return ret;
 }
@@ -129,17 +138,18 @@ size_t generate_application(IR ir, CTEnv env, ref ByteCode[] bc) {
     operator.generate_bytecode(env, bc);
 
     auto ti = operator.ti;
+    auto argc = ti.operands.length;
     if (ti.type == TI.Type.builtin_function) {
-        bc ~= ByteCode(ByteCode.type.call_builtin_delegate);
+        bc ~= ByteCode(ByteCode.type.call_builtin_function, argc);
     } else if (ti.type == TI.Type.builtin_delegate) {
-        bc ~= ByteCode(ByteCode.type.call_builtin_delegate);
+        bc ~= ByteCode(ByteCode.type.call_builtin_delegate, argc);
     } else if (ti.type == TI.Type.delegate_) {
-        bc ~= ByteCode(ByteCode.Type.call_delegate);
+        bc ~= ByteCode(ByteCode.Type.call_delegate, argc);
     } else if (ti.type == TI.Type.function_) {
         if (operator.function_.local) {
-            bc ~= ByteCode(ByteCode.Type.call_local_function);
+            bc ~= ByteCode(ByteCode.Type.call_local_function, argc);
         } else if (operator.function_.global) {
-            bc ~= ByteCode(ByteCode.Type.call_function);
+            bc ~= ByteCode(ByteCode.Type.call_function, argc);
         } else {
             assert (0);
         }
@@ -151,12 +161,20 @@ size_t generate_application(IR ir, CTEnv env, ref ByteCode[] bc) {
 
 size_t generate_pointer_for(IR ir, CTEnv env, ref ByteCode[] bc) {
     if (ir.type == IR.Type.variable) {
-        assert (ir.variable.local);
-        bc ~= ByteCode(ByteCode.Type.local_variable_reference_lookup,
-                ir.variable.index);
+        auto bctype = ir.variable.local 
+            ? ByteCode.Type.local_variable_reference_lookup
+            : ByteCode.Type.global_variable_reference_lookup;
+        bc ~= ByteCode(bctype, ir.variable.index);
         return bc.end;
     } else if (ir.type == IR.Type.deref) {
         return ir.next.generate_bytecode(env, bc);
+    } else if (ir.type == IR.Type.up_ref) {
+        auto ret = bc.end + 1;
+        bc ~= ByteCode(ByteCode.Type.push_env);
+        auto inner = unwind_up_ref(ir, bc);
+        generate_pointer_for(inner, env, bc);
+        bc ~= ByteCode(ByteCode.Type.pop_env);
+        return ret;
     } else {
         assert (0);
     }
@@ -167,7 +185,7 @@ size_t generate_assignment(IR ir, CTEnv env, ref ByteCode[] bc) {
     auto ret = ir.bin.rhs.generate_bytecode(env, bc);
     bc ~= ByteCode(ByteCode.Type.push_arg);
     generate_pointer_for(ir.bin.lhs, env, bc);
-    bc ~= ByteCode(ByteCode.Type.assignment);
+    bc ~= ByteCode(ByteCode.Type.assignment, ir.ti.tsize());
     return ret;
 }
 size_t generate_addressof(IR ir, CTEnv env, ref ByteCode[] bc) {
@@ -191,23 +209,37 @@ size_t generate_var_decl(IR ir, CTEnv env, ref ByteCode[] bc) {
 size_t generate_var_init(IR ir, CTEnv env, ref ByteCode[] bc) {
     auto var_init = ir.var_init;
     assert (env.lookup(var_init.name).type == IR.Type.variable);
-    auto var = env.lookup(var_init.name).variable;
+    auto var_ir = env.lookup(var_init.name);
+    auto var = var_ir.variable;
+
+    if (var.global) {
+        return var_ir.generate_bytecode(env, bc);
+    }
 
     size_t ret;
 
     if (var_init.initializer.type == IR.Type.nothing) {
-        writeln("ir.ti = ", ir.ti);
         bc ~= ByteCode(ByteCode.Type.constant, init_val(ir.ti));
         ret = bc.end;
     } else {
         ret = var_init.initializer.generate_bytecode(env, bc);
     }
     bc ~= ByteCode(ByteCode.Type.push_arg);
-    bc ~= ByteCode(ByteCode.Type.local_variable_reference_lookup, var.index);
-    bc ~= ByteCode(ByteCode.Type.assignment);
+    generate_pointer_for(var_ir, env, bc);
+    bc ~= ByteCode(ByteCode.Type.assignment, ir.ti.tsize());
     return ret;
 }
 size_t generate_nothing(IR ir, CTEnv env, ref ByteCode[] bc) {
     bc ~= ByteCode(ByteCode.Type.nop);
     return bc.end;
+}
+
+size_t generate_function(IR ir, CTEnv env, ref ByteCode[] bc) {
+    bc ~= ByteCode(ByteCode.Type.nop);
+    auto ret = bc.end;
+
+    auto new_env = env.extend(ir.function_.ti.operands, ir.function_.params);
+    ir.function_.body_.generate_bytecode(new_env, ir.function_.bc);
+
+    return ret;
 }

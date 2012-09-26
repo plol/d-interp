@@ -2,6 +2,8 @@ module parsergen;
 
 import std.file, std.format;
 
+import std.string : chomp;
+
 import std.stdio, std.conv, std.typecons, std.exception;
 import std.algorithm, std.range, std.array, std.typetuple, std.regex;
 import std.datetime;
@@ -28,7 +30,7 @@ struct Rule(Tok) {
 }
 Rule!Tok rule(Tok, Ts...)(Ts ts) {
     Sym!Tok[] ret;
-    foreach (T t; ts[1..$]) {
+    foreach (t; ts[1..$]) {
         ret ~= Sym!Tok(t);
     }
     return Rule!Tok(ts[0], ret);
@@ -317,6 +319,119 @@ template ParserGen(Token, Result, Tok, alias getTok,
         }
 
         return Parser(rfs, states);
+    }
+
+    Parser load_parser(string filename, ReduceFun[string] rfs) {
+        populate_rules();
+        populate_firsts();
+
+        State[] states;
+
+        foreach (line; File(filename).byLine()) {
+            states ~= deserialize(line);
+        }
+
+        return Parser(rfs, states);
+    }
+    void save_parser(Parser p, string filename) {
+        auto f = File(filename, "w");
+        foreach (state; p.states) {
+            f.writeln(serialize(state));
+        }
+    }
+
+    State deserialize(const char[] line) {
+
+        static Sym!Tok get_sym(const char[] sym_str) {
+            Sym!Tok sym;
+            sym.terminal = sym_str[0] == 'i';
+            if (sym.terminal) {
+                sym.tok = cast(Tok)(to!int(sym_str[1..$]));
+            } else {
+                sym.name = to!string(sym_str[1 .. $]);
+            }
+            return sym;
+        }
+        auto space_split = line.chomp().split(" ");
+        auto lhs = space_split[0];
+
+        auto semi_split = lhs.split(";");
+
+        Item[] items;
+        foreach (s; semi_split) {
+            if (s.length == 0) continue;
+
+            auto bar_split = s.split("|");
+            auto rule_s = bar_split[0];
+            auto context_s = bar_split[1];
+            auto post_len_s = bar_split[2];
+
+            auto rule_name = rule_s.until("[").to!string();
+
+            Item item;
+
+            Sym!Tok[] rule_syms;
+
+            auto rule_sym_strings = rule_s.find("[")[1 .. $-1].split(",");
+            foreach (sym_str; rule_sym_strings) {
+                rule_syms ~= get_sym(sym_str);
+            }
+
+            foreach (ref rule; get_rules(rule_name)) {
+                if (rule.syms == rule_syms) {
+                    item.rule = &rule;
+                    break;
+                }
+            }
+            assert (item.rule !is null);
+
+            foreach (t; context_s.split(",")) {
+                item.context ~= cast(Tok)(to!int(t));
+            }
+
+            item.post = item.rule.syms[$ - to!size_t(post_len_s) .. $];
+
+            items ~= item;
+        }
+
+        Transition[] transitions;
+
+        if (space_split.length > 1) {
+            auto rhs = space_split[1];
+            foreach (trans_str; rhs.split(",")) {
+                auto colon_split = trans_str.split(":");
+                auto from = get_sym(colon_split[0]);
+                auto to = to!size_t(colon_split[1]);
+                transitions ~= Transition(from, to);
+            }
+        }
+
+        State ret = State(items, transitions);
+        return ret;
+    }
+
+    string serialize(Sym!Tok sym) {
+        if (sym.terminal) {
+            return text("i", cast(int)sym.tok);
+        }
+        return text("a", sym.name);
+    }
+
+    string serialize(State s) {
+        string ret;
+        foreach (item; s.nucleus) {
+            ret ~= format("%s[%s]|%(%s,%)|%s;",
+                    item.rule.name, 
+                    map!(a => serialize(a))(item.rule.syms).join(","),
+                    map!"cast(int)a"(item.context),
+                    item.post.length);
+        }
+        ret ~= " ";
+        foreach (transition; s.transitions) {
+            ret ~= format("%s:%s,", serialize(transition.sym),
+                    transition.next);
+        }
+        return ret[0 .. $-1];
     }
 
     private bool compatible_contexts(Item[] a, Item[] b, size_t i, size_t j) {

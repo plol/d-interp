@@ -1,7 +1,7 @@
 import std.stdio, std.traits, std.conv;
 
 import std.datetime, std.array, std.typetuple;
-import std.typecons;
+import std.typecons, std.file;
 
 import stuff;
 
@@ -9,6 +9,7 @@ import internal.ir, internal.env, internal.val;
 import internal.typeinfo, internal.ctenv, internal.typecheck;
 import internal.ast2ir, internal.bytecode, internal.bcgen;
 import internal.interp;
+import entry;
 
 
 import lexer, parser;
@@ -85,7 +86,7 @@ void heh_crash() {
 }
 
 void main(string[] args) {
-    auto ct_env = new CTEnv();
+    auto ct_env = new CTEnv(true);
 
     int[int] bro;
     bro[9] = 123;
@@ -119,90 +120,19 @@ void main(string[] args) {
     ct_env.builtin_func_declare!(writeln!(string, int))("writeln");
     ct_env.builtin_func_declare!(heh_crash)("heh_crash");
 
-//    // while (a < 10)
-//    //     a = a + 1;
-//    auto ir = new IR(IR.Type.sequence, [
-//                    new IR(IR.Type.while_, 
-//                        new IR(IR.Type.application,
-//                            new IR(IR.Type.variable, "$lt_int", ct_env),
-//                            [ new IR(IR.Type.variable, "a", ct_env),
-//                              new IR(IR.Type.constant, 
-//                                      ct_env.get_ti!int(), Val(10)) ]),
-//                        new IR(IR.Type.assignment,
-//                            new IR(IR.Type.variable, "a", ct_env),
-//                            new IR(IR.Type.application,
-//                                new IR(IR.Type.variable, "$add_int", ct_env),
-//                                [ new IR(IR.Type.variable, "a", ct_env),
-//                                  new IR(IR.Type.constant,
-//                                          ct_env.get_ti!int(), Val(1)) ]))),
-//                    ]);
-//    // while (cast(bool)a)
-//    //     a = a - 1;
-//    auto ir = new IR(IR.Type.sequence, [
-//                    new IR(IR.Type.while_, 
-//                        new IR(IR.Type.application,
-//                            new IR(IR.Type.variable, 
-//                                "$cast_int_bool", ct_env),
-//                            [ new IR(IR.Type.variable, "a", ct_env) ]),
-//                        new IR(IR.Type.assignment,
-//                            new IR(IR.Type.variable, "a", ct_env),
-//                            new IR(IR.Type.application,
-//                                new IR(IR.Type.variable, "$add_int", ct_env),
-//                                [ new IR(IR.Type.variable, "a", ct_env),
-//                                  new IR(IR.Type.constant, 
-//                                      ct_env.get_ti!int(), Val(-1)) ]))),
-//                    ]);
-
-    // mykey = 2;
-    // myaa[mykey] = 5; // kinda, sorta
-
-    // actually
-    // mykey = 2;
-    // *cast(int*)($aaGetX(cast(void*)myaa, typeid(mykey), 4u, &mykey)) = 5;
-    // which is what will be generated hopefully
-
-    //IR lookup_lv(string aa_name, string var_name) {
-    //    return call(id("$aaGetX"),
-    //            call(id("$cast_int_int_aa_p_void_p"),
-    //                addressof(id(aa_name))),
-    //            typeid_(id(var_name)),
-    //            constant(ct_env, int.sizeof),
-    //            addressof(id(var_name)));
-    //}
-    //IR lookup_rv(string aa_name, string var_name) {
-    //    return call(id("$aaGetRvalueX"),
-    //            call(id("$cast_int_int_aa_void_p"),
-    //                id(aa_name)),
-    //            typeid_(id(var_name)),
-    //            constant(ct_env, int.sizeof),
-    //            addressof(id(var_name)));
-    //}
-
-    //auto ir = seq(
-    //        set(id("mykey"), constant(ct_env, 2)),
-    //        set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
-    //            constant(ct_env, 5)),
-
-    //        while_(call(id("$lt_int"),
-    //                deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
-    //                constant(ct_env, 10)),
-    //            seq(
-    //                set(deref(call(id("$cast_void_p_int_p"), lookup_lv("myaa", "mykey"))),
-    //                    call(id("$add_int"),
-    //                        deref(call(id("$cast_void_p_int_p"), lookup_rv("myaa", "mykey"))),
-    //                        constant(ct_env, 1)))),
-    //            ),
-    //        );
-    //resolve(ir, ct_env);
-
-
     writeln("HI");
+    P.Parser p;
     auto sw = StopWatch();
     sw.start();
-    auto p = P.make_parser(reduction_table);
+    if (exists("saved_parser")) {
+        p = P.load_parser("saved_parser", reduction_table);
+    } else {
+        p = P.make_parser(reduction_table);
+        P.save_parser(p, "saved_parser");
+    }
     sw.stop();
     writeln("TOOK ", sw.peek().hnsecs / 10_000.0, " ms!",
-           " (", p.states.length, ")");
+            " (", p.states.length, ")");
 
     auto f = File("states.txt", "w");
     foreach (i, state; p.states) {
@@ -292,75 +222,3 @@ void main(string[] args) {
     }
 }
 
-void print_throwable(Throwable t) {
-    writefln("%s@%s(%s): %s", t.classinfo.name, t.file, t.line, t.msg);
-    bool lulz;
-    ulong x;
-    foreach (i, s; t.info) {
-        if (i < 6) {
-            writeln(s);
-        } else {
-            lulz = true;
-            x = i;
-        }
-    }
-    if (lulz) {
-        writefln("... (%s rows total)", x);
-    }
-}
-
-void run_code(ref P.Parser p, ref CTEnv ct_env, string file, string input) {
-    auto lx = Lexer(input, file);
-
-    if (lx.empty) return;
-
-    //writeln(lx);
-
-    foreach (tok; lx) {
-        p.feed(tok);
-    }
-    p.feed(Token(Loc(-1, ""), Tok.eof, ""));
-    if (p.results.empty) {
-        return;
-    }
-    writeln("parsed");
-//    writefln("%(%s\n%)", p.results);
-
-    Val val;
-
-    foreach (r; p.results) {
-        auto ir = toIR(r, ct_env);
-
-        try {
-            resolve(ir, ct_env);
-        } catch (SemanticFault f) {
-            writeln("error ", r.loc, ": ", f.msg);
-            break;
-        }
-
-        ByteCode[] bc = ir.generate_bytecode(ct_env);
-
-        auto env = ct_env.get_runtime_env();
-        try {
-            val = bc.interpret(env);
-        } catch (Throwable t) {
-            print_throwable(t);
-            break;
-        }
-
-        if (ir.ti.type != TI.Type.void_) {
-            writeln(val.toString(ir.ti));
-        }
-        ct_env.assimilate(env);
-    }
-    p.results = [];
-}
-
-
-auto foo() {
-    auto bar() {
-        writeln("Asdf");
-    }
-
-    return &bar;
-}

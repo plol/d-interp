@@ -2,6 +2,7 @@ module internal.typecheck;
 
 import std.conv, std.exception, std.stdio, std.algorithm, std.range;
 import internal.typeinfo, internal.ctenv, internal.ir, internal.val;
+import entry;
 
 import stuff;
 
@@ -49,6 +50,7 @@ TI resolve(ref IR ir, CTEnv env) {
         IR.Type.var_decl: &resolve_var_decl,
         IR.Type.var_init: &resolve_var_init,
         IR.Type.function_: &resolve_function,
+        IR.Type.up_ref: &resolve_up_ref,
         ];
 
     if (ir is null) {
@@ -191,7 +193,7 @@ IR overload_set_match(IR[] functions, TI[] arg_types) {
 }
 
 TI resolve_variable(ref IR ir, CTEnv env) {
-    return env.typeof_(ir.variable.name);
+    return ir.variable.ti;
 }
 
 TI resolve_sequence(ref IR ir, CTEnv env) {
@@ -273,28 +275,47 @@ TI resolve_var_decl(ref IR ir, CTEnv env) {
         init_ir.ti = ir.ti;
         init_ir.resolve(env);
     }
-    return TI.void_;
+    return ir.ti;
 }
 
 TI resolve_var_init(ref IR ir, CTEnv env) {
     auto var_init = ir.var_init;
-    auto var = env.var_declare(ir.ti, var_init.name);
 
-    if (var_init.initializer.type == IR.Type.nothing) {
-        if (ir.ti.type == TI.Type.auto_) {
+    auto has_initializer = var_init.initializer.type != IR.Type.nothing;
+    auto is_auto = ir.ti.type == TI.Type.auto_;
+    TI lhs_ti, rhs_ti;
+
+    if (has_initializer) {
+        rhs_ti = var_init.initializer.resolve(env);
+
+        if (is_auto) {
+            lhs_ti = rhs_ti;
+        } else if (rhs_ti == ir.ti) {
+            lhs_ti = ir.ti;
+        } else {
+            throw new SemanticFault(text(
+                        "cannot initialize a ", ir.ti, 
+                        " with a ", rhs_ti));
+        }
+    } else {
+        if (is_auto) {
             throw new SemanticFault(
                     "Must have initializer for auto declaration");
         }
-        var.ti = ir.ti;
-        var.variable.ti = var.ti; // ugh
-        return ir.ti;
+        lhs_ti = ir.ti;
     }
-    var.ti = var_init.initializer.resolve(env);
-    var.variable.ti = var.ti; // ugh
-    if (ir.ti.type != TI.Type.auto_ && var.ti != ir.ti) {
-        throw new SemanticFault(text(
-                    "cannot initialize a ", ir.ti, " with a ", var.ti));
+    
+    if (env.global) {
+        auto rhs_val = execute(var_init.initializer, env);
+        auto var = env.global_var_declare(lhs_ti, var_init.name, rhs_val);
+    } else {
+        auto var = env.var_declare(lhs_ti, var_init.name);
     }
-    return ir.ti;
+    return lhs_ti;
+}
+
+
+TI resolve_up_ref(ref IR ir, CTEnv env) {
+    return ir.next.resolve(env);
 }
 

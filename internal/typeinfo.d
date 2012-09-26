@@ -135,6 +135,10 @@ struct TI {
         ext_data = e;
     }
 
+    size_t tsize() {
+        return primitive.tsize();
+    }
+
     bool opEquals(TI other) {
         return type == other.type
             //&& primitive == other.primitive

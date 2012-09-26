@@ -302,7 +302,8 @@ final class IR {
                                     return format("%s = %s", vi.name,
                                             vi.initializer);
                                 }
-
+            case Type.return_: return format("return %s", next);
+            case Type.up_ref: return format("#%s", next);
             case Type.nothing: return "(nothing)";
             default: assert (0, text(type));
         }

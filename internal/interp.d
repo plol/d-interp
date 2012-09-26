@@ -21,7 +21,7 @@ string lotsa_spaces = "                                                        "
 ~"                                                       "; // True code poetry;
 int depth = 0;
 
-bool trace = false;
+bool trace = true;
 
 void trace_msg(T...)(T t) {
     if (!trace) return;
@@ -41,11 +41,13 @@ void inctrace() { depth += 1; }
 
 Val interpret(ByteCode[] bc, Env env) {
     size_t pc, n;
-    Val val;
+    Val val, temp;
     Val[] arg_stack;
 
+    Env[] env_stack;
+
     Val[] pop_args(size_t h) {
-        Val[] ret = arg_stack[$-h .. h];
+        Val[] ret = arg_stack[$-h .. $];
         arg_stack = arg_stack[0 .. $-h];
         arg_stack.assumeSafeAppend();
         return ret;
@@ -75,16 +77,16 @@ Val interpret(ByteCode[] bc, Env env) {
                 arg_stack ~= val;
                 break;
             case ByteCode.Type.global_variable_reference_lookup:
-                assert (0);
+                val = Val(&env.globals.vars[c.var_lookup.index]);
                 break;
             case ByteCode.Type.global_variable_lookup:
-                assert (0);
+                val = env.globals.vars[c.var_lookup.index];
                 break;
             case ByteCode.Type.local_variable_reference_lookup:
-                assert (0);
+                val = Val(&env.vars[c.var_lookup.index]);
                 break;
             case ByteCode.Type.local_variable_lookup:
-                assert (0);
+                val = env.vars[c.var_lookup.index];
                 break;
             case ByteCode.Type.constant:
                 val = c.constant.val;
@@ -96,20 +98,33 @@ Val interpret(ByteCode[] bc, Env env) {
                 val.builtin_delegate(pop_args(c.call.num_args));
                 break;
             case ByteCode.Type.call_function:
+                val = call_function(val.func, env, pop_args(c.call.num_args));
+                break;
+            case ByteCode.Type.call_local_function:
                 assert (0);
                 break;
             case ByteCode.Type.call_delegate:
-                val = call_function(val.delegate_.func, val.delegate_.env,
-                        pop_args(c.call.num_args));
+                assert (0);
                 break;
             case ByteCode.Type.assignment:
                 n = c.assignment.size;
-                val.pointer[0 .. n] = (cast(void*)(pop_args(1).ptr))[0 ..  n];
-                (cast(void*)&val)[0 .. n] = val.pointer[0 .. n];
+                temp = pop_args(1)[0];
+                val.pointer[0 .. n] = (cast(void*)&temp)[0 .. n];
+                val = temp;
                 break;
             case ByteCode.Type.make_delegate:
                 val = Val(Delegate(val.func, env));
                 break;
+
+            case ByteCode.Type.push_env:
+                env_stack ~= env;
+            case ByteCode.Type.pop_env:
+                env = env_stack.back;
+                env_stack.popBack();
+                env_stack.assumeSafeAppend();
+            case ByteCode.Type.get_parent_env:
+                env = env.parent;
+
             case ByteCode.Type.leave:
                 pc = bc.length;
                 break;
@@ -120,17 +135,27 @@ Val interpret(ByteCode[] bc, Env env) {
 }
 
 Val call_function(Function f, Env env, Val[] operands) {
+    auto new_env = new Env(f.env.var_count, env.globals);
+    writeln("wat");
+    return call_impl(f, new_env, operands);
+}
+
+Val call_local_function(Function f, Env env, Val[] operands) {
     auto new_env = env.extend(f.env.var_count);
+    return call_impl(f, new_env, operands);
+}
+
+Val call_impl(Function f, Env env, Val[] operands) {
     size_t index;
     foreach (i; 0 .. f.params.length) {
         if (f.params[i] is null) {
             continue;
         }
-        new_env.update(index, operands[i]);
+        env.update(index, operands[i]);
         index += 1;
     }
     inctrace();
-    auto ret = f.bc.interpret(new_env);
+    auto ret = f.bc.interpret(env);
     dectrace();
     return ret;
 }
