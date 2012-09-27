@@ -253,7 +253,7 @@ final class IR {
 
     string get_name() {
         switch (type) {
-            default: assert (0);
+            default: return "<?>";
             case Type.id: return data.id.name;
             case Type.variable: return data.variable.name;
             case Type.function_: return data.function_.name;
@@ -270,7 +270,6 @@ final class IR {
             case Type.while_: 
                 return text("while (", data.while_.condition, ") { ",
                         data.while_.body_, "} ");
-            //case Type.switch_: 
             case Type.function_: return format("function[%s(%(%s, %)) %s]",
                                          get_name(),
                                          data.function_.params,
@@ -287,10 +286,6 @@ final class IR {
                                            data.application.operands);
             case Type.assignment: return format("%s = %s",
                                           data.bin.lhs, data.bin.rhs);
-            //case Type.typeid_: 
-            //case Type.typeof_: 
-            //case Type.addressof: 
-            //case Type.deref:
             case Type.var_decl: return format("%s %(%s, %);",
                                         ti,
                                         data.var_decl.inits);
@@ -304,6 +299,7 @@ final class IR {
                                 }
             case Type.return_: return format("return %s", next);
             case Type.up_ref: return format("#%s", next);
+            case Type.addressof: return format("&%s", next);
             case Type.nothing: return "(nothing)";
             default: assert (0, text(type));
         }

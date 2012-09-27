@@ -55,14 +55,14 @@ Val interpret(ByteCode[] bc, Env env) {
 
     trace_msg("interpreting:");
     foreach (i, c; bc) {
-        trace_msgf("%3d: %s", i, c);
+        trace_msgf("%3x: %s", i, c);
     }
 
     while (pc < bc.length) {
         auto c = bc[pc];
         pc += 1;
         switch (c.type) {
-            default: assert (0);
+            default: assert (0, text(c.type));
             case ByteCode.Type.nop:
                 break;
             case ByteCode.Type.branch:
@@ -70,7 +70,7 @@ Val interpret(ByteCode[] bc, Env env) {
                     pc = c.jump.target;
                 }
                 break;
-            case ByteCode.Type.goto_:
+            case ByteCode.Type.jump:
                 pc = c.jump.target;
                 break;
             case ByteCode.Type.push_arg:
@@ -104,7 +104,8 @@ Val interpret(ByteCode[] bc, Env env) {
                 assert (0);
                 break;
             case ByteCode.Type.call_delegate:
-                assert (0);
+                val = call_delegate(val.delegate_.func, val.delegate_.env,
+                        pop_args(c.call.num_args));
                 break;
             case ByteCode.Type.assignment:
                 n = c.assignment.size;
@@ -118,13 +119,15 @@ Val interpret(ByteCode[] bc, Env env) {
 
             case ByteCode.Type.push_env:
                 env_stack ~= env;
+                break;
             case ByteCode.Type.pop_env:
                 env = env_stack.back;
                 env_stack.popBack();
                 env_stack.assumeSafeAppend();
+                break;
             case ByteCode.Type.get_parent_env:
                 env = env.parent;
-
+                break;
             case ByteCode.Type.leave:
                 pc = bc.length;
                 break;
@@ -141,6 +144,11 @@ Val call_function(Function f, Env env, Val[] operands) {
 }
 
 Val call_local_function(Function f, Env env, Val[] operands) {
+    auto new_env = env.extend(f.env.var_count);
+    return call_impl(f, new_env, operands);
+}
+
+Val call_delegate(Function f, Env env, Val[] operands) {
     auto new_env = env.extend(f.env.var_count);
     return call_impl(f, new_env, operands);
 }

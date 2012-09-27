@@ -15,7 +15,6 @@ struct ByteCode {
         nop,
         branch,
         jump,
-        goto_,
         push_arg,
         local_variable_reference_lookup,
         local_variable_lookup,

@@ -125,7 +125,13 @@ size_t generate_sequence(IR ir, CTEnv env, ref ByteCode[] bc) {
 
 size_t generate_constant(IR ir, CTEnv env, ref ByteCode[] bc) {
     bc ~= ByteCode(ByteCode.Type.constant, ir.constant.val);
-    return bc.end;
+    auto ret = bc.end;
+
+    if (ir.ti.type == TI.Type.delegate_) {
+        bc ~= ByteCode(ByteCode.Type.make_delegate);
+    }
+
+    return ret;
 }
 size_t generate_application(IR ir, CTEnv env, ref ByteCode[] bc) {
     auto ret = bc.end + 1;
@@ -139,23 +145,25 @@ size_t generate_application(IR ir, CTEnv env, ref ByteCode[] bc) {
 
     auto ti = operator.ti;
     auto argc = ti.operands.length;
-    if (ti.type == TI.Type.builtin_function) {
-        bc ~= ByteCode(ByteCode.type.call_builtin_function, argc);
-    } else if (ti.type == TI.Type.builtin_delegate) {
-        bc ~= ByteCode(ByteCode.type.call_builtin_delegate, argc);
-    } else if (ti.type == TI.Type.delegate_) {
-        bc ~= ByteCode(ByteCode.Type.call_delegate, argc);
-    } else if (ti.type == TI.Type.function_) {
-        if (operator.function_.local) {
-            bc ~= ByteCode(ByteCode.Type.call_local_function, argc);
-        } else if (operator.function_.global) {
+
+    void append_call_bytecode(TI ti) {
+        if (ti.type == TI.Type.builtin_function) {
+            bc ~= ByteCode(ByteCode.Type.call_builtin_function, argc);
+        } else if (ti.type == TI.Type.builtin_delegate) {
+            bc ~= ByteCode(ByteCode.Type.call_builtin_delegate, argc);
+        } else if (ti.type == TI.Type.delegate_) {
+            bc ~= ByteCode(ByteCode.Type.call_delegate, argc);
+        } else if (ti.type == TI.Type.function_) {
             bc ~= ByteCode(ByteCode.Type.call_function, argc);
+        } else if (ti.type == TI.Type.local_function) {
+            bc ~= ByteCode(ByteCode.Type.call_local_function, argc);
+        } else if (ti.type == TI.Type.pointer) {
+            append_call_bytecode(ti.next);
         } else {
             assert (0);
         }
-    } else {
-        assert (0);
     }
+    append_call_bytecode(ti);
     return ret;
 }
 
@@ -189,7 +197,10 @@ size_t generate_assignment(IR ir, CTEnv env, ref ByteCode[] bc) {
     return ret;
 }
 size_t generate_addressof(IR ir, CTEnv env, ref ByteCode[] bc) {
-    assert (0);
+    if (ir.next.type == IR.Type.constant) {
+        assert (0);
+    }
+    return generate_pointer_for(ir.next, env, bc);
 }
 size_t generate_deref(IR ir, CTEnv env, ref ByteCode[] bc) {
     assert (0);
@@ -208,6 +219,7 @@ size_t generate_var_decl(IR ir, CTEnv env, ref ByteCode[] bc) {
 }
 size_t generate_var_init(IR ir, CTEnv env, ref ByteCode[] bc) {
     auto var_init = ir.var_init;
+    writeln(env.table);
     assert (env.lookup(var_init.name).type == IR.Type.variable);
     auto var_ir = env.lookup(var_init.name);
     auto var = var_ir.variable;
@@ -238,8 +250,7 @@ size_t generate_function(IR ir, CTEnv env, ref ByteCode[] bc) {
     bc ~= ByteCode(ByteCode.Type.nop);
     auto ret = bc.end;
 
-    auto new_env = env.extend(ir.function_.ti.operands, ir.function_.params);
-    ir.function_.body_.generate_bytecode(new_env, ir.function_.bc);
+    ir.function_.body_.generate_bytecode(ir.function_.env, ir.function_.bc);
 
     return ret;
 }

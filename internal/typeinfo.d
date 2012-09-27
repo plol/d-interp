@@ -101,6 +101,7 @@ struct TI {
 
         delegate_,
         function_,
+        local_function,
 
         const_,
         immutable_,

@@ -7,8 +7,8 @@ import entry;
 import stuff;
 
 class SemanticFault : Exception {
-    this(string s) {
-        super(s);
+    this(string s, string FILE=__FILE__, int LINE=__LINE__) {
+        super(s, FILE, LINE);
     }
 }
 
@@ -86,17 +86,42 @@ TI resolve_typeid(ref IR ir, CTEnv env) {
 }
 
 TI resolve_addressof(ref IR ir, CTEnv env) {
+
     auto next_ti = ir.next.resolve(env);
 
-    TI ti;
-    ti.type = TI.Type.pointer;
+    if (ir.next.type == IR.Type.overload_set) {
+        ir = ir.next.overload_set.set[0]; // BUG: what is this
+        return ir.resolve(env);
+    } else if (ir.next.type == IR.Type.constant) {
+        if (next_ti.type == TI.Type.function_) {
+            ir = ir.next;
+            return ir.resolve(env);
+        } else if (next_ti.type == TI.Type.local_function) {
+            ir = ir.next;
+            TI ti;
+            ti.type = TI.Type.delegate_;
+            ti.delegate_ = new TypeInfo_Delegate;
+            ti.delegate_.next = next_ti.next.primitive;
+            ti.ext_data = next_ti.ext_data;
+            writeln("next_ti = ", next_ti);
+            writeln("     ti = ", ti);
+            return ti;
+        } else {
+            assert (0);
+        }
+    } else if (ir.next.type == IR.Type.variable) {
 
-    ti.pointer = new TypeInfo_Pointer;
-    ti.pointer.m_next = next_ti.primitive;
+        TI ti;
+        ti.type = TI.Type.pointer;
 
-    ti.ext_data ~= next_ti;
+        ti.pointer = new TypeInfo_Pointer;
+        ti.pointer.m_next = next_ti.primitive;
 
-    return ti;
+        ti.ext_data ~= next_ti;
+        return ti;
+    } else {
+        assert (0);
+    }
 }
 
 TI resolve_if(ref IR ir, CTEnv env) {
@@ -135,6 +160,8 @@ TI resolve_application(ref IR ir, CTEnv env) {
         ir.application.operator = overload_set_match(
                 ir.application.operator.overload_set.set, arg_types);
         func_type = ir.application.operator.resolve(env);
+    } else if (func_type.type == TI.Type.pointer) {
+        func_type = func_type.next;
     }
 
     auto assumed_arg_types = func_type.operands;
@@ -264,6 +291,9 @@ TI resolve_function(ref IR ir, CTEnv env) {
     if (func.ti.next.type == TI.Type.auto_) {
         func.ti.next = new_env.return_type;
     }
+    if (!env.global) {
+        func.ti.type = TI.Type.local_function;
+    }
 
     env.func_declare(func);
 
@@ -286,7 +316,7 @@ TI resolve_var_init(ref IR ir, CTEnv env) {
     TI lhs_ti, rhs_ti;
 
     if (has_initializer) {
-        rhs_ti = var_init.initializer.resolve(env);
+        rhs_ti = ir.var_init.initializer.resolve(env);
 
         if (is_auto) {
             lhs_ti = rhs_ti;
