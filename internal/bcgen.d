@@ -219,7 +219,6 @@ size_t generate_var_decl(IR ir, CTEnv env, ref ByteCode[] bc) {
 }
 size_t generate_var_init(IR ir, CTEnv env, ref ByteCode[] bc) {
     auto var_init = ir.var_init;
-    writeln(env.table);
     assert (env.lookup(var_init.name).type == IR.Type.variable);
     auto var_ir = env.lookup(var_init.name);
     auto var = var_ir.variable;

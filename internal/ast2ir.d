@@ -81,6 +81,12 @@ IR toIR(Ast ast, CTEnv env) {
                                assert (ast.bin.lhs.type == Ast.Type.prefix_op);
                                assert (ast.bin.lhs.str == "&");
                                return ir.addressof(ast.bin.rhs.toIR(env));
+        case Ast.Type.classdef:
+                               {
+                                   writeln("horse banana");
+                                   assert (0);
+                               }
+
     }
 }
 

@@ -1,2 +1,79 @@
 D interpreter for IDA Summer of Code (ISOC).
 
+
+
+lexer.d produces range of tokens, fed to parser.d (via parsergen.d) to construct
+tree of AST (in internal/ast.d). This tree is then converted to IR with
+internal/ast2ir.d (so that the AST is the source, and the IR is MY internal
+thing). The IR is then typechecked and typed (for auto x=2 etc) with resolve()
+of internal/typecheck.d. Finally, the code is converted to bytecode with
+internal/bcgen.d and interpreted with internal/interp.d, resulting in something
+useful, hopefully.
+
+
+- README
+This file.
+
+- entry.d
+Functions for running a string as code, etc
+
+- internal/ast.d
+Definition of AST class.
+
+- internal/ast2ir.d
+Logic for converting AST to IR.
+
+- internal/bcgen.d
+Generates bytecode from well-typed IR.
+
+- internal/bytecode.d
+Definition of bytecode.
+
+- internal/ctenv.d
+Structure for the compile time environment.
+
+- internal/env.d
+Structure for runtime environment.
+
+- internal/function_.d
+Representation of a defined function.
+
+- internal/interp.d
+The interpreting part.
+
+- internal/ir.d
+Definition of internal representation.
+
+- internal/typecheck.d
+Typechecking and resolving code.
+
+- internal/typeinfo.d
+Definition of type information.
+
+- internal/val.d
+Definition of a runtime value.
+
+- internal/variable.d
+Definition of a compile time variable.
+
+- lexer.d
+The lexer.
+
+- parser.d
+The parser.
+
+- parsergen.d
+The parser generator.
+
+- saved_parser
+the saved parser
+
+- states.txt
+the saved parser in a more readable format
+
+- stuff.d
+stuff
+
+- test.d
+the file you run for testing stuff
+

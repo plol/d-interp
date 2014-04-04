@@ -155,6 +155,10 @@ final class Ast {
     static struct VarInitList {
         Ast[] vars;
     }
+    static struct ClassDef {
+        string name;
+        Ast[] declarations;
+    }
 
     union PossibleValues {
         string str;
@@ -183,6 +187,7 @@ final class Ast {
         ParameterList parameter_list;
         VarInit var_init;
         VarInitList var_init_list;
+        ClassDef classdef;
     }
 
     Type type;
@@ -310,6 +315,15 @@ final class Ast {
         }
     }
 
+    this(Type t, Loc l, string s, Ast[] w) {
+        loc = l;
+        type = t;
+        if (t == Type.classdef) {
+            classdef = ClassDef(s, w);
+        } else {
+            assert (0);
+        }
+    }
     this(Type t, Ast n) { this(t, n.loc, n); }
     this(Type t, Loc l, Ast n) {
         loc = l;
@@ -560,7 +574,7 @@ final class Ast {
         }
     }
 
-    string toString() {
+    override string toString() {
         switch (type) {
             case Type.other:
                 return str;
@@ -627,6 +641,11 @@ final class Ast {
                 }
                 return format("%s = %s", values.var_init.name,
                         values.var_init.initializer);
+            case Type.classdef:
+                return format("class %s { %(%s; %) }", values.classdef.name,
+                        values.classdef.declarations);
+            case Type.member_lookup:
+                return format("%s.%s", values.lookup.lhs, values.lookup.rhs);
         }
     }
 }

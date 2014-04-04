@@ -42,13 +42,15 @@ void run_code(ref P.Parser p, CTEnv ct_env, string file, string input) {
     if (p.results.empty) {
         return;
     }
-    writeln("parsed");
-//    writefln("%(%s\n%)", p.results);
+    //writeln("parsed");
+    writefln("%(%s\n%)", p.results);
 
     Val val;
 
     foreach (r; p.results) {
         auto ir = toIR(r, ct_env);
+
+        //writeln(ir);
 
         try {
             resolve(ir, ct_env);
@@ -56,6 +58,8 @@ void run_code(ref P.Parser p, CTEnv ct_env, string file, string input) {
             writeln("error ", r.loc, ": ", f.msg);
             break;
         }
+
+        //writeln(ir);
 
         auto env = ct_env.get_runtime_env();
         

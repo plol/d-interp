@@ -28,7 +28,7 @@ final class Function {
         body_ = b;
     }
 
-    string toString() {
+    override string toString() {
         return name;
     }
     bool local() @property { return !static_; }

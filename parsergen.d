@@ -383,7 +383,7 @@ template ParserGen(Token, Result, Tok, alias getTok,
                     break;
                 }
             }
-            assert (item.rule !is null);
+            assert (item.rule !is null, "No rule found for " ~ rule_name);
 
             foreach (t; context_s.split(",")) {
                 item.context ~= cast(Tok)(to!int(t));

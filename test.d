@@ -14,24 +14,6 @@ import entry;
 
 import lexer, parser;
 
-//        declare(int_int_bool_delegate, "$lt_int", Val((Val[] vars) {
-//                    return Val(vars[0].int_val < vars[1].int_val);
-//                    }));
-//        auto int_type = new TI;
-//        int_type.type = TI.Type.int_;
-//        auto bool_type = new TI;
-//        int_type.type = TI.Type.bool_;
-//
-//        auto int_int_int_delegate = new TI;
-//        int_int_int_delegate.type = TI.Type.builtin_delegate;
-//        int_int_int_delegate.ti1 = int_type;
-//        int_int_int_delegate.tis = [int_type, int_type];
-//
-//        auto int_int_bool_delegate = new TI;
-//        int_int_bool_delegate.type = TI.Type.builtin_delegate;
-//        int_int_bool_delegate.ti1 = bool_type;
-//        int_int_bool_delegate.tis = [int_type, int_type];
-
 bool lt_int(int a, int b) {
     return a < b;
 }
@@ -101,7 +83,7 @@ void main(string[] args) {
                 int, uint, long, ulong, float, double, real)) {
     //    foreach (U; TypeTuple!(bool, char, wchar, dchar, byte, ubyte, short, ushort,
     //                int, uint, long, ulong, float, double, real)) {
-        alias T U;
+            alias T U;
             ct_env.builtin_func_declare!(add!(T, U))("$add");
     //        ct_env.funcdeclare!(sub!(T, U))("$sub");
     //        ct_env.funcdeclare!(div!(T, U))("$div");
@@ -163,62 +145,89 @@ void main(string[] args) {
             run_code(p, ct_env, "<stdin>", input);
         }
     } else if (args[1] == "--test") {
-        writeln("test 0:");
-        run_code(p, ct_env, "<test>", q{
-                writeln("test 0: ", 12);
-                });
-        writeln("test 1:");
-        run_code(p, ct_env, "<test>", q{
-
-                void foo(int x) {
-                    writeln("x = ", x);
-                    void bar() {
-                        writeln("x = ", x);
-                        x = x + 1;
-                    }
-                    bar();
-                    x = x + 1;
-                    bar();
-                }
-
-                foo(12);
-                writeln("done");
-                });
-        writeln("test 2:");
-        run_code(p, ct_env, "<test>", q{
-                void foo2(int x) {
-                    int i;
-                    while (i < x) {
-                        //writeln("i = ", i);
-                        i = i + 1;
-                    }
-                    writeln("i = ", i);
-                }
-
-                foo2(10000);
-                writeln("done");
-                });
-        writeln("test 3:");
-        run_code(p, ct_env, "<test>", q{
-
-                auto foo(int x) {
-                    writeln("x = ", x);
-                    void bar() {
-                        writeln("x = ", x);
-                        x = x + 1;
-                    }
-                    bar();
-                    x = x + 1;
-                    bar();
-
-                    return &bar;
-                }
-
-                auto f = foo(12);
-
-                f();
-                writeln("done");
-                });
+        run_tests(p, ct_env);
+    } else {
+        assert (0);
     }
 }
+
+void run_tests(P.Parser p, CTEnv ct_env) {
+    writeln("test 0:");
+    run_code(p, ct_env, "<test>", q{
+                writeln("test 0: ", 12);
+            });
+    writeln("test 1:");
+    run_code(p, ct_env, "<test>", q{
+
+            void foo(int x) {
+                writeln("x = ", x);
+                void bar() {
+                    writeln("x = ", x);
+                    x = x + 1;
+                }
+                bar();
+                x = x + 1;
+                bar();
+            }
+
+            foo(12);
+            writeln("done");
+            });
+    writeln("test 2:");
+    run_code(p, ct_env, "<test>", q{
+            void foo2(int x) {
+                int i;
+                while (i < x) {
+                    //writeln("i = ", i);
+                    i = i + 1;
+                }
+                writeln("i = ", i);
+            }
+
+            foo2(10000);
+            writeln("done");
+            });
+    writeln("test 3:");
+    run_code(p, ct_env, "<test>", q{
+
+            auto foo3(int x) {
+                writeln("x = ", x);
+                void bar() {
+                    writeln("x = ", x);
+                    x = x + 1;
+                }
+                bar();
+                x = x + 1;
+                bar();
+
+                return &bar;
+            }
+
+            auto f = foo3(12);
+
+            f();
+            f();
+            f();
+            writeln("done");
+    });
+    writeln("test 4:");
+    run_code(p, ct_env, "<test>", q{
+
+            class C {
+                int a;
+
+                int get_a() {
+                    return a;
+                }
+            }
+
+            auto c = new C;
+            c.a = 10;
+            writeln(c.get_a());
+            });
+}
+
+
+
+
 

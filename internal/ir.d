@@ -262,7 +262,7 @@ final class IR {
         }
     }
 
-    string toString() {
+    override string toString() {
         switch (type) {
             case Type.if_:
                 return text("if (", data.if_.if_part, ") { ", data.if_.then_part,

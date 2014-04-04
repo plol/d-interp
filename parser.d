@@ -55,6 +55,7 @@ Rule!Tok[] grammar = [
     rule!Tok("Decl", "Type", "ComVarInit", Tok.semi),
     rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionBody"),
     rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionAttributes", "FunctionBody"),
+    rule!Tok("Decl", "ClassDef"),
 
     rule!Tok("ComVarInit", "VarInit"),
     rule!Tok("ComVarInit", "ComVarInit", Tok.comma, "VarInit"),
@@ -237,7 +238,7 @@ Rule!Tok[] grammar = [
     rule!Tok("Type", Tok.auto_),
     rule!Tok("Type", "BasicType"),
     rule!Tok("Type", "IdList"),
-    rule!Tok("Type", Tok.dot, "IdList"),
+    //rule!Tok("Type", Tok.dot, "IdList"),
     rule!Tok("Type", Tok.const_, Tok.lpar, "Type", Tok.rpar),
     rule!Tok("Type", Tok.immutable_, Tok.lpar, "Type", Tok.rpar),
     rule!Tok("Type", Tok.shared_, Tok.lpar, "Type", Tok.rpar),
@@ -280,7 +281,7 @@ Rule!Tok[] grammar = [
     rule!Tok("BasicType", Tok.void_),
 
     rule!Tok("IdList", Tok.id),
-    rule!Tok("IdList", "IdList", Tok.dot, Tok.id),
+    //rule!Tok("IdList", "IdList", Tok.dot, Tok.id),
 
     rule!Tok("PostfixExpr", "PrimaryExpr"),
     rule!Tok("PostfixExpr", "PostfixExpr", Tok.dot, Tok.id),
@@ -347,6 +348,8 @@ Rule!Tok[] grammar = [
 
     rule!Tok("Return", Tok.return_),
     rule!Tok("Return", Tok.return_, "Expr"),
+
+    rule!Tok("ClassDef", Tok.class_, Tok.id, "CurlStmtList"),
     ];
 
 alias ParserGen!(Token, Ast, Tok, getTok, grammar, "Stmt", Tok.eof) P;
@@ -556,18 +559,23 @@ static this() {
     };
 
     reduction_table["Decl"] = (P.StackItem[] ts) {
-        if (ts.length == 2) {
+        if (ts.length == 1) { //rule!Tok("Decl", "ClassDef"),
+            return ts[0].result;
+        } else if (ts.length == 2) { //rule!Tok("Decl", "StorageClasses", "Decl"),
             assert (0);
-    //rule!Tok("Decl", "StorageClasses", "Decl"),
+        } else if (ts.length == 3) { //rule!Tok("Decl", "Type", "ComVarInit", Tok.semi),
+            return ast(Ast.Type.vardecl, ts[1].result.loc,
+                    ts[0].result, ts[1].result);
         } else if (ts[1].terminal) {
-            if (ts.length == 5) assert (0);
+            // both of these
+    //rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionBody"),
     //rule!Tok("Decl", "Type", Tok.id, "Parameters", "FunctionAttributes", "FunctionBody"),
+            if (ts.length == 5) assert (0); // fuck the long one
             return ast(Ast.Type.funcdef, ts[0].result.loc,
                     ts[0].result, ts[1].token.str,
                     ts[2].result, ts[3].result);
         } else {
-            return ast(Ast.Type.vardecl, ts[1].result.loc,
-                    ts[0].result, ts[1].result);
+            assert (0);
         }
     };
 
@@ -641,6 +649,11 @@ static this() {
         return ast(Ast.Type.var_init, ts[0].token.loc, ts[0].token.str,
                 ts[2].result);
     }; 
+
+    reduction_table["ClassDef"] = (P.StackItem[] ts) {
+        //writeln(ts);
+        return ast(Ast.Type.classdef, ts[0].token.loc, ts[1].token.str, ts[2].result.sequence);
+    };
 }
 
 

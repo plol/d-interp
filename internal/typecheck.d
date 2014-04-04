@@ -20,7 +20,7 @@ string lotsa_spaces = "                                                        "
 ~"                                                       "; // True code poetry;
 int depth = 0;
 
-bool trace = true;
+bool trace = false;
 
 void pre_resolve(IR ir) {
     if (!trace) return;
@@ -103,8 +103,8 @@ TI resolve_addressof(ref IR ir, CTEnv env) {
             ti.delegate_ = new TypeInfo_Delegate;
             ti.delegate_.next = next_ti.next.primitive;
             ti.ext_data = next_ti.ext_data;
-            writeln("next_ti = ", next_ti);
-            writeln("     ti = ", ti);
+            //writeln("next_ti = ", next_ti);
+            //writeln("     ti = ", ti);
             return ti;
         } else {
             assert (0);
@@ -305,7 +305,7 @@ TI resolve_var_decl(ref IR ir, CTEnv env) {
         init_ir.ti = ir.ti;
         init_ir.resolve(env);
     }
-    return ir.ti;
+    return (ir.var_decl.inits.length == 1) ? ir.var_decl.inits[0].ti : TI.void_;
 }
 
 TI resolve_var_init(ref IR ir, CTEnv env) {
@@ -341,6 +341,7 @@ TI resolve_var_init(ref IR ir, CTEnv env) {
     } else {
         auto var = env.var_declare(lhs_ti, var_init.name);
     }
+    ir.ti = lhs_ti;
     return lhs_ti;
 }
 

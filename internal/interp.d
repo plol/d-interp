@@ -21,7 +21,7 @@ string lotsa_spaces = "                                                        "
 ~"                                                       "; // True code poetry;
 int depth = 0;
 
-bool trace = true;
+bool trace = false;
 
 void trace_msg(T...)(T t) {
     if (!trace) return;
@@ -101,7 +101,7 @@ Val interpret(ByteCode[] bc, Env env) {
                 val = call_function(val.func, env, pop_args(c.call.num_args));
                 break;
             case ByteCode.Type.call_local_function:
-                assert (0);
+                val = call_local_function(val.func, env, pop_args(c.call.num_args));
                 break;
             case ByteCode.Type.call_delegate:
                 val = call_delegate(val.delegate_.func, val.delegate_.env,
@@ -139,7 +139,6 @@ Val interpret(ByteCode[] bc, Env env) {
 
 Val call_function(Function f, Env env, Val[] operands) {
     auto new_env = new Env(f.env.var_count, env.globals);
-    writeln("wat");
     return call_impl(f, new_env, operands);
 }
 
